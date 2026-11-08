@@ -92,3 +92,25 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 
 - Kleine Schritte, nach jedem Schritt Tests laufen lassen (`TZ=Europe/Berlin node --test 'tests/*.test.js'`).
 - Am Ende jeder Sitzung: was der Nutzer am iPhone tun muss, Schritt für Schritt.
+- Direkt auf main arbeiten (Nutzer hat zugestimmt); `Planer Update.js` lädt von main.
+- `tests/scriptable-simulation.test.js` simuliert Scriptable und lässt die echten iPhone-Scripts laufen. Neue Scriptable-Funktionen dort nachbilden.
+- Neue Script-Dateien in `manifest.json` eintragen (ein Test prüft das).
+
+## Entscheidungen (Fragerunde 08.11.2026)
+
+- Adressen Zuhause/Arbeit: in der Ersteinrichtung eintippen oder aktuellen Standort nehmen. Nur auf dem iPhone.
+- Schicht-Termine: Ort = echte Arbeitsadresse.
+- Ort-Erkennung: Termin ohne Ort = zuhause. Sonst steht immer etwas im Ort: gespeicherte Adresse oder Stichwort ("zuhause", "arbeit") erkennt den Ort, alles andere = fremder Ort.
+- Fahrzeiten: nur neue oder über 30 Tage alte Strecken abfragen. Phase (a) fragt alle möglichen Strecken ab (heim, hin, direkt).
+- Ganztägige Termine werden ignoriert; Kalender können in den Einstellungen ignoriert werden.
+- Kalender "Arbeit": nur selbst angelegte Einträge (Notiz enthält "planer-schicht") werden geändert.
+- Kalender "Planer": Aufgaben und Fahrten. Pause/Ruhe nicht. Beim Neuplanen alle noch nicht beendeten Einträge löschen.
+- Kalender anlegen: Scriptable kann das nicht. Lösung: Kurzbefehl "Planer Kalender" ("Neuen Kalender hinzufügen"), Fallback von Hand.
+- 24.12. und 31.12. sind frei (einstellbar als "weitere freie Tage").
+- Vorziehen erlaubt: Ist am Fälligkeitstag kein Platz, bis zu 2 Tage früher (einstellbar), danach später.
+- Mehrfach fällige Aufgaben in 7 Tagen (z. B. Wäsche) werden mehrfach geplant, als wäre der vorige Termin erledigt.
+- Ersteinrichtung fragt die letzte Erledigung je Aufgabe.
+- Pflicht ohne Platz: Hinweis im Tagesplan und Mitteilung (nur wenn sich die Warnung ändert).
+- Aufgaben nur, wenn zuhause; freie Tage/Urlaub: 08:00–21:00 frei.
+- Erledigt/Später: sofort neu planen (Kurzbefehl "Planer planen" wird gestartet). Später = nicht vor Ende des alten Blocks, mindestens 30 min.
+- Wecker auch für den Weg zur Arbeit. Kein Wecker für Heimfahrten.
