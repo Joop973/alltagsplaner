@@ -60,7 +60,38 @@ function alsDatum(x) {
   return x instanceof Date ? x : new Date(x);
 }
 
+// Eingabe aus der App -> "YYYY-MM-DD", null (= leer) oder undefined (= ungültig).
+// "heute", "gestern", "3" (= vor 3 Tagen), "12.11.", "12.11.2026", "2026-11-12"
+function datumEingabe(text, heute) {
+  const s = String(text == null ? '' : text).trim().toLowerCase();
+  if (!s) return null;
+  if (s === 'heute') return ymd(heute);
+  if (s === 'gestern') return ymd(plusTage(tagesBeginn(heute), -1));
+  if (/^\d{1,4}$/.test(s)) return ymd(plusTage(tagesBeginn(heute), -Number(s)));
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return gueltig(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/);
+  if (m) {
+    let j = m[3] ? Number(m[3]) : heute.getFullYear();
+    if (j < 100) j += 2000;
+    return gueltig(j, Number(m[2]), Number(m[1]));
+  }
+  return undefined;
+}
+function gueltig(j, mo, t) {
+  const d = new Date(j, mo - 1, t);
+  return d.getMonth() === mo - 1 && d.getDate() === t ? ymd(d) : undefined;
+}
+
+// "2026-11-12" -> "12.11.2026"
+function deutschDatum(s) {
+  if (!s) return '';
+  const [j, m, t] = String(s).split('-');
+  return `${t}.${m}.${j}`;
+}
+
 module.exports = {
+  datumEingabe, deutschDatum,
   WOCHENTAGE, zwei, ymd, ausYmd, hm, kurz, minutenAus, mitUhrzeit, tagesBeginn,
   plusTage, plusMin, tageZwischen, montagVon, aufrunden5, alsDatum,
 };

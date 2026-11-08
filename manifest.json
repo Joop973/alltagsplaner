@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "dateien": [
+    "planer/adapter/dateien.js",
+    "planer/adapter/kalender.js",
+    "planer/adapter/menue.js",
+    "planer/adapter/mitteilungen.js",
+    "planer/adapter/planung.js",
+    "planer/core/ablauf.js",
+    "planer/core/aktion.js",
+    "planer/core/datum.js",
+    "planer/core/fahrzeiten.js",
+    "planer/core/feiertage.js",
+    "planer/core/orte.js",
+    "planer/core/planer.js",
+    "planer/core/schichten.js",
+    "planer/core/standard.js",
+    "Planer Aktion.js",
+    "Planer Planen.js",
+    "Planer Update.js",
+    "Planer.js"
+  ]
+}
