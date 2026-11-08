@@ -90,5 +90,5 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 
 ## Arbeitsweise
 
-- Kleine Schritte, nach jedem Schritt Tests laufen lassen (`TZ=Europe/Berlin node --test tests/`).
+- Kleine Schritte, nach jedem Schritt Tests laufen lassen (`TZ=Europe/Berlin node --test 'tests/*.test.js'`).
 - Am Ende jeder Sitzung: was der Nutzer am iPhone tun muss, Schritt für Schritt.
