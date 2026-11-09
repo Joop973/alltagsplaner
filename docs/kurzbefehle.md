@@ -46,7 +46,7 @@ Nachteil: Die ausgeschalteten Planer-Wecker sammeln sich in der Uhr-App. Ab und 
 
 ### Teil B: Strecken holen (Phase a)
 
-6. Aktion **Script ausführen** (Scriptable). Script: **Planer Planen**. Parameter: `a`.
+6. Aktion **Script ausführen** (Scriptable). Script: **Planer Planen**. Das Feld **Parameter** leer lassen (leer = Phase a). Öffnet sich beim Antippen "Dateien": einfach **Abbrechen**.
 7. Aktion **Wörterbuchwert abrufen**: **Wert** für Schlüssel `strecken` in **Script-Ergebnis** (Ausgabe von Schritt 6).
 8. Aktion **Text**: `start`.
 9. Aktion **Zur Variablen hinzufügen**: Text → Variable neu, Name `Zeiten`.
@@ -69,6 +69,8 @@ Nachteil: Die ausgeschalteten Planer-Wecker sammeln sich in der Uhr-App. Ab und 
 18. Aktion **Text kombinieren**: **Zeiten** mit **Neue Zeile**.
 19. Aktion **Text**: `b`, dann **Neue Zeile** (Return), dann **Kombinierter Text**.
 20. Aktion **Script ausführen** (Scriptable). Script: **Planer Planen**. Parameter: **Text** (Schritt 19).
+    So kommt die Variable ins Feld: den Finger **länger auf "Parameter" halten** → **Variable auswählen** → die Ausgabe **Text** von Schritt 19 antippen.
+    Nur kurz antippen öffnet "Dateien" – das ist falsch. Gibt es ein Feld **Texts**, geht die Variable auch dort hinein.
 21. Aktion **Wörterbuchwert abrufen**: Schlüssel `wecker` in **Script-Ergebnis** (Schritt 20).
 22. Aktion **Wiederholen mit jedem Objekt** in diesem Wörterbuchwert.
 23. Darin: **Wörterbuchwert abrufen** `zeit` aus **Wiederholungsobjekt**, umbenennen in `zeit`.

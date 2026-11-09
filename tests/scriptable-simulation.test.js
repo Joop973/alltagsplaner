@@ -146,7 +146,7 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   u.termin('Arbeit', 'Fremder Eintrag', new Date(2026, 10, 14, 10), new Date(2026, 10, 14, 11), '');
 
   // Phase a: heute läuft die Schicht schon (07:00), wird also nicht neu angelegt
-  const a = await u.script('Planer Planen.js', { shortcutParameter: 'a' });
+  const a = await u.script('Planer Planen.js', {}); // Parameter leer = Phase a
   assert.ok(!a.fehler, a.fehler);
   assert.ok(a.anzahl > 0);
   const schichten = u.termine.filter(t => t.calendar.title === 'Arbeit' && t.notes.includes('planer-schicht'));
