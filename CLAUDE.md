@@ -118,3 +118,4 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 - Scriptable-Aktion "Script ausführen": kurzes Antippen von "Parameter" öffnet Dateien; Variablen per langem Drücken -> "Variable auswählen". Phase a braucht keinen Parameter.
 - Kurzbefehl so einfach wie möglich halten (Nutzer baut ihn von Hand): Phase a gibt getrennte Listen "rad" und "auto" mit {von, nach} aus; zwei Wiederholungen ohne "Wenn"; Rückgabe als ein Text "RAD"/Fahrzeiten/"AUTO"/Fahrzeiten (Zuordnung über die Reihenfolge, leere Zeilen werden übersprungen).
 - "Wegzeit abrufen" bricht den ganzen Kurzbefehl ab, wenn ein Ort nicht gefunden wird. Darum prüft Phase a alle Orte vorher mit Location.geocode (gemerkt 30 Tage in planer-daten/orte.json) und gibt nur gefundene Adressen weiter; nicht gefundene: Fallback-Zeit + Log-Warnung.
+- "Wecker löschen" fragt nach, wenn "Suche Wecker" nichts findet -> in "Wenn [Wecker] hat einen beliebigen Wert" einpacken.

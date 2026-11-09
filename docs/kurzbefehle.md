@@ -48,7 +48,9 @@ Alles, was hier steht, gehört in **einen einzigen Kurzbefehl**. Die Teile A bis
 
 ```
  1  Suche Wecker  (Filter: Beschriftung beginnt mit "Planer:")
- 2  Wecker löschen  (Wecker aus 1)
+ 2  Wenn [Wecker aus 1] hat einen beliebigen Wert
+        Wecker löschen  (Wecker aus 1)
+    Sonst / Ende Wenn
  3  Script ausführen: Planer Planen  (Parameter leer)
  4  Wert für "rad" in [Ergebnis von 3] abrufen
  5  Wiederholen mit jedem Objekt in [Wörterbuchwert von 4]
@@ -80,8 +82,10 @@ Kein "Wenn", keine eigenen Variablen, kein "Zur Variablen hinzufügen" nötig.
 ### Teil A: Alte Planer-Wecker löschen
 
 1. Aktion **Suche Wecker**. In der Aktion **Filter hinzufügen** → Feld **Beschriftung** (oder "Name") → **beginnt mit** → `Planer:` tippen.
-2. Aktion **Wecker löschen**. Feld "Wecker": Variable **Wecker** aus Schritt 1 (meist schon eingetragen).
-   Hat die Aktion unter dem Pfeil **>** einen Schalter zum Bestätigen: ausschalten.
+2. Aktion **Wenn**, direkt unter Schritt 1. Bedingung: lange drücken → Variable auswählen → **Suche Wecker** antippen → **hat einen beliebigen Wert**. Nur **eine** Bedingung.
+   Grund: Gibt es noch keine Planer-Wecker, würde "Wecker löschen" sonst jedes Mal fragen, welche Wecker du löschen willst.
+   Darin (zwischen "Wenn" und "Sonst"): Aktion **Wecker löschen**. Feld "Wecker": Variable **Wecker** aus Schritt 1 (lange drücken → Variable auswählen → "Suche Wecker" antippen).
+   Hat "Wecker löschen" unter dem Pfeil **>** einen Schalter zum Bestätigen: ausschalten. "Sonst" bleibt leer.
 
 ### Teil B: Strecken holen
 
