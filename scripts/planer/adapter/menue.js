@@ -12,6 +12,8 @@ const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const PLAN = hole('adapter/planung');
 const ORT = hole('adapter/orte');
+const SON = hole('adapter/sonder');
+const SO = hole('core/sonder');
 
 // ---------- kleine Dialog-Helfer ----------
 
@@ -178,7 +180,7 @@ async function tagesplan() {
   if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
   const eintraege = [];
   let gewaehlt = null;
-  for (const b of plan.bloecke) eintraege.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}`, fett: true, block: b });
+  for (const b of plan.bloecke) eintraege.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}${b.unterwegs ? ' (unterwegs)' : ''}`, fett: true, block: b });
   for (const f of plan.fahrten) {
     if (new Date(f.ankunft) < new Date()) continue;
     const ziel = f.nachArt === 'zuhause' ? 'nach Hause' : `zu ${f.zielName}`;
@@ -447,6 +449,167 @@ async function ausnahmenMenue() {
   }
 }
 
+// ---------- Geburtstage ----------
+
+function kurzTM(ymd) { return `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}.`; }
+
+async function tagMonatAbfragen(titel, wert) {
+  for (;;) {
+    const t = await eingabe(titel, 'Tag und Monat, z. B. 24.12.', wert || '', 'TT.MM.');
+    if (t == null) return null;
+    const d = D.datumEingabe(t, new Date());
+    if (d) return d.slice(5); // "MM-DD"
+    await info('Ungültiges Datum', `"${t}"`);
+  }
+}
+
+async function geburtstageMenue() {
+  const { einst } = await PLAN.laden();
+  for (;;) {
+    const geb = await SON.geburtstageLaden();
+    const kal = await KAL.geburtstageLesen(einst, new Date(), 366);
+    const liste = SO.geburtstagsListe(kal, geb.eigene, D.ymd(new Date()), 366);
+    const zeilen = liste.map(p => `${kurzTM(p.datum)} ${p.name}${geb.geschenke[p.name] ? ' – Geschenk' : ''}${p.quelle === 'eigene' ? ' (eigener Eintrag)' : ''}`);
+    const hinweis = kal.length ? 'Antippen: Geschenk-Erinnerung an/aus.' : `Kalender "${einst.geburtstage.kalender}" nicht gefunden oder leer – nur eigene Einträge.`;
+    const i = await auswahl('Geburtstage', `${hinweis} Gratulieren: Mitteilung um ${einst.geburtstage.uhrzeit}. Geschenk: Aufgabe ab ${einst.geburtstage.geschenkVorTage} Tage vorher.`, [...zeilen, '+ Geburtstag hinzufügen']);
+    if (i === -1) return;
+    if (i === liste.length) {
+      const name = await eingabe('Name', '');
+      if (!name) continue;
+      const datum = await tagMonatAbfragen(`Geburtstag von ${name}`);
+      if (!datum) continue;
+      geb.eigene.push({ name, datum });
+      if (await frage('Geschenk?', `Soll ich dich an ein Geschenk für ${name} erinnern?`)) geb.geschenke[name] = true;
+    } else {
+      const p = liste[i];
+      const opt = [geb.geschenke[p.name] ? 'Geschenk-Erinnerung aus' : 'Geschenk-Erinnerung an'];
+      if (p.quelle === 'eigene') opt.push('Löschen');
+      const w = await auswahl(p.name, `Geburtstag ${kurzTM(p.datum)}`, opt);
+      if (w === 0) {
+        if (geb.geschenke[p.name]) delete geb.geschenke[p.name]; else geb.geschenke[p.name] = true;
+      }
+      if (w === 1) geb.eigene = geb.eigene.filter(e => !(e.name === p.name && SO.naechstesDatum(e.datum, D.ymd(new Date())) === p.datum));
+    }
+    await SON.speichern('geburtstage.json', geb);
+  }
+}
+
+// ---------- Fristen ----------
+
+async function fristBearbeiten(fristen, f) {
+  for (;;) {
+    const i = await auswahl(f.name, `Fällig ${D.deutschDatum(f.datum)} · ${f.monate > 0 ? `alle ${f.monate} Monate` : 'einmalig'} · Erinnerung ${f.vorlaufWochen.join(' und ')} Wochen vorher`, [
+      'Erledigt (nächste Frist eintragen)', `Name: ${f.name}`, `Datum: ${D.deutschDatum(f.datum)}`,
+      `Wiederholung: ${f.monate > 0 ? `alle ${f.monate} Monate` : 'einmalig'}`, `Vorlauf: ${f.vorlaufWochen.join(', ')} Wochen`, 'Löschen',
+    ]);
+    if (i === -1) return;
+    if (i === 0) {
+      const r = SO.fristenFortschreiben([f], { erledigt: { [SO.fristAufgabeId(f)]: D.ymd(new Date()) } });
+      fristen.splice(fristen.indexOf(f), 1, ...r.fristen);
+      await SON.speichern('fristen.json', fristen);
+      await info('Erledigt', r.meldungen.join('\n'));
+      return;
+    }
+    if (i === 1) { const t = await eingabe('Name', '', f.name); if (t) f.name = t; }
+    if (i === 2) { const d = await datumAbfragen('Fällig am', f.datum); if (d) f.datum = d; }
+    if (i === 3) { const n = await zahlEingabe('Wiederholung', 'Alle wie viele Monate? 0 = einmalig (z. B. TÜV: 24, Versicherung: 12)', f.monate); if (n != null) f.monate = n; }
+    if (i === 4) {
+      const t = await eingabe('Vorlauf', 'Wochen vorher erinnern, mit Komma, z. B. 4, 1', f.vorlaufWochen.join(', '));
+      if (t != null) { const w = t.split(',').map(x => Number(x.trim())).filter(x => x > 0); if (w.length) f.vorlaufWochen = w; }
+    }
+    if (i === 5 && await frage('Löschen?', f.name)) { fristen.splice(fristen.indexOf(f), 1); await SON.speichern('fristen.json', fristen); return; }
+    await SON.speichern('fristen.json', fristen);
+  }
+}
+
+async function fristenMenue() {
+  for (;;) {
+    const fristen = await SON.fristenLaden();
+    fristen.sort((a, b) => (a.datum < b.datum ? -1 : 1));
+    const i = await auswahl('Fristen', 'TÜV, Versicherungen usw. Erscheinen auch in der Erinnerungen-Liste "Fristen" – dort abhaken = erledigt.',
+      [...fristen.map(f => `${D.deutschDatum(f.datum)} ${f.name}${f.monate > 0 ? ` (alle ${f.monate} Mon.)` : ''}`), '+ Neue Frist']);
+    if (i === -1) return;
+    if (i < fristen.length) { await fristBearbeiten(fristen, fristen[i]); continue; }
+    const name = await eingabe('Neue Frist', 'Name, z. B. TÜV Auto oder Kündigung Handyvertrag');
+    if (!name) continue;
+    const datum = await datumAbfragen('Fällig am', null);
+    if (!datum) continue;
+    const monate = await zahlEingabe('Wiederholung', 'Alle wie viele Monate? 0 = einmalig (TÜV: 24, Versicherung: 12)', 12);
+    if (monate == null) continue;
+    fristen.push({ id: `f${Date.now().toString(36)}`, name, datum, monate, vorlaufWochen: [4, 1], dauer: 15 });
+    await SON.speichern('fristen.json', fristen);
+  }
+}
+
+// ---------- Checklisten ----------
+
+async function checklistenMenue() {
+  for (;;) {
+    const listen = await SON.checklistenLaden();
+    const i = await auswahl('Checklisten', 'Kommt als Mitteilung zu Beginn der Ruhe vor der Abfahrt, wenn ein Stichwort am Wortanfang im Termintitel steht.',
+      [...listen.map(l => `${l.an !== false ? 'an' : 'aus'}: ${l.name} (${(l.stichwoerter || []).slice(0, 3).join(', ')}${(l.stichwoerter || []).length > 3 ? ' …' : ''})`), '+ Neue Checkliste']);
+    if (i === -1) return;
+    if (i === listen.length) {
+      const name = await eingabe('Neue Checkliste', 'Name');
+      if (!name) continue;
+      listen.push({ id: `c${Date.now().toString(36)}`, name, an: true, stichwoerter: [name.toLowerCase()], punkte: [] });
+      await SON.speichern('checklisten.json', listen);
+      continue;
+    }
+    const l = listen[i];
+    const w = await auswahl(l.name, `Stichwörter: ${(l.stichwoerter || []).join(', ')}\nInhalt: ${(l.punkte || []).join(', ')}`,
+      [l.an !== false ? 'Ausschalten' : 'Einschalten', 'Name', 'Stichwörter', 'Inhalt', 'Löschen']);
+    if (w === 0) l.an = l.an === false;
+    if (w === 1) { const t = await eingabe('Name', '', l.name); if (t) l.name = t; }
+    if (w === 2) { const t = await eingabe('Stichwörter', 'Mit Komma trennen. Passt, wenn ein Wort im Termintitel so beginnt.', (l.stichwoerter || []).join(', ')); if (t != null) l.stichwoerter = t.split(',').map(x => x.trim().toLowerCase()).filter(Boolean); }
+    if (w === 3) { const t = await eingabe('Inhalt', 'Mit Komma trennen', (l.punkte || []).join(', ')); if (t != null) l.punkte = t.split(',').map(x => x.trim()).filter(Boolean); }
+    if (w === 4 && await frage('Löschen?', l.name)) listen.splice(i, 1);
+    await SON.speichern('checklisten.json', listen);
+  }
+}
+
+// ---------- Blumen ----------
+
+async function blumenMenue() {
+  for (;;) {
+    const b = await SON.blumenLaden();
+    const i = await auswahl('Blumen', 'Wird als Besorgung auf dem Heimweg oder morgens an freien Tagen geplant.', [
+      `Blumen: ${b.an ? 'an' : 'aus'}`,
+      `Zufällig alle ${b.minWochen} bis ${b.maxWochen} Wochen`,
+      `Keine zufälligen Blumen ${b.sperreTage} Tage vor/nach Anlässen`,
+      `Für Anlässe ${b.vorTage} Tage vorher besorgen`,
+      `Dauer: ${b.dauer} min`,
+      `Anlässe (${b.anlaesse.length})`,
+    ]);
+    if (i === -1) return;
+    if (i === 0) b.an = !b.an;
+    if (i === 1) {
+      const a = await zahlEingabe('Frühestens nach … Wochen', '', b.minWochen);
+      const z = a == null ? null : await zahlEingabe('Spätestens nach … Wochen', '', b.maxWochen);
+      if (a && z && z >= a) { b.minWochen = a; b.maxWochen = z; b.naechste = null; }
+    }
+    if (i === 2) { const n = await zahlEingabe('Sperre um Anlässe (Tage)', '', b.sperreTage); if (n != null) { b.sperreTage = n; b.naechste = null; } }
+    if (i === 3) { const n = await zahlEingabe('Tage vorher', '', b.vorTage); if (n != null) b.vorTage = n; }
+    if (i === 4) { const n = await zahlEingabe('Dauer (min)', '', b.dauer); if (n) b.dauer = n; }
+    if (i === 5) {
+      for (;;) {
+        const k = await auswahl('Anlässe', 'Antippen zum Löschen.', [...b.anlaesse.map(a => `${a.datum.slice(3, 5)}.${a.datum.slice(0, 2)}. ${a.name}`), '+ Anlass hinzufügen (z. B. Jahrestag, Geburtstag)']);
+        if (k === -1) break;
+        if (k === b.anlaesse.length) {
+          const name = await eingabe('Anlass', 'z. B. Jahrestag oder Geburtstag');
+          if (!name) continue;
+          const datum = await tagMonatAbfragen(name);
+          if (datum) { b.anlaesse.push({ name, datum }); b.naechste = null; }
+        } else if (await frage('Löschen?', b.anlaesse[k].name)) {
+          b.anlaesse.splice(k, 1);
+        }
+        await SON.speichern('blumen.json', b);
+      }
+    }
+    await SON.speichern('blumen.json', b);
+  }
+}
+
 // ---------- Orte ----------
 
 const QUELLE = { suche: 'gefunden', hand: 'von dir', standort: 'Standort', ignoriert: 'ignoriert (Ersatzzeit)' };
@@ -527,6 +690,10 @@ async function hauptmenue() {
       }],
       ['Tagesplan', tagesplan],
       ['Aufgaben bearbeiten', aufgabenMenue],
+      ['Geburtstage', geburtstageMenue],
+      ['Fristen', fristenMenue],
+      ['Checklisten', checklistenMenue],
+      ['Blumen', blumenMenue],
       ['Urlaub / Ausnahmen', ausnahmenMenue],
       ['Gelernte Orte', orteMenue],
       ['Einstellungen', einstellungenMenue],

@@ -83,10 +83,9 @@ per Mitteilung erinnert und vor jeder Abfahrt einen Wecker stellt.
 
 ## Umfang
 
-Jetzt nur Version 1 (Abschnitte 1–7). Später, nicht jetzt: Checklisten (z. B. Trainingstasche, abschaltbar),
-Geburtstage (Geburtstage-Kalender plus selbst eingetragene; Geschenk 2 und 1 Woche vorher, Gratulieren am Tag),
-Blumen (unregelmäßig plus Weltfrauentag/Valentinstag/Jahrestag), Fristen (TÜV, Versicherungen) als Erinnerungen,
-Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
+Version 1 (Abschnitte 1–7) fertig. Version 2 (Fragerunde 09.11.2026), in dieser Reihenfolge:
+1. Geburtstage (fertig), 2. Fristen (fertig), 3. Checklisten (fertig), 4. Blumen (fertig),
+5. Orte lernen (fertig, einfache Mischung), 6. Dienstplan-PDF-Import (offen), 7. Spracheingabe (offen).
 
 ## Arbeitsweise
 
@@ -122,3 +121,12 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 - "Wecker löschen" fragt nach, wenn "Suche Wecker" nichts findet -> in "Wenn [Wecker] hat einen beliebigen Wert" einpacken.
 - Abhaken (Nutzerwunsch 09.11., A+B): (A) im Tagesplan Aufgabe antippen -> Erledigt / Heute nicht / Später, danach sofort neu planen. (B) Aufgaben von heute+morgen als Erinnerungen in Liste "Planer" (ohne Fälligkeitsdatum, damit keine doppelte Mitteilung); beim Planen werden abgehakte eingelesen (letzte = Abhak-Datum), dann alle eigenen gelöscht und neu angelegt. Schalter in den Einstellungen.
 - "Heute nicht" (Mitteilung, Tagesplan): frühestens morgen 00:00 neu einplanen.
+
+## Entscheidungen Version 2 (Fragerunde 09.11.2026)
+
+- Geburtstage: Kalender "Geburtstage" (lesbar, obwohl Kontakte nicht gehen) + eigene Einträge (geburtstage.json). Geschenk nur für markierte Personen: einmalige Pflicht-Aufgabe 30 min ab 14 Tage vorher, spätestens Vortag, plus Mitteilung 7 Tage vorher, falls offen. Gratulieren: Mitteilung am Tag um 06:00.
+- Fristen (fristen.json): Name, Datum, Wiederholung in Monaten (0 = einmalig), Vorlauf in Wochen (Standard 4 und 1). Erinnerungen-Liste "Fristen" mit Fälligkeitsdatum; abhaken = erledigt -> nächstes Datum. Dazu Pflicht-Aufgabe 15 min ab erstem Vorlauf und Mitteilungen 06:00 je Vorlauf und am Tag.
+- Checklisten (checklisten.json, Standardlisten Training/Behörde/Arzt/Feier/Reise, in der App änderbar, je an/aus): Stichwort am Wortanfang im Termintitel -> eine Mitteilung mit der Liste zu Beginn der Ruhe vor der Abfahrt.
+- Blumen (blumen.json): zufällig alle 3–6 Wochen (wenn Zeit), nicht 14 Tage vor/nach festen Anlässen; Anlässe (Valentinstag, Weltfrauentag, eigene wie Jahrestag/Geburtstag) Pflicht ab 2 Tage vorher bis zum Tag. Als Unterwegs-Aufgabe: auf dem Heimweg direkt nach einem auswärtigen Termin (bis 19:00) oder morgens an Tagen ohne Arbeit; sonst normale Lücke.
+- Einmalige Aufgaben: Felder einmalig, faellig, bis, unterwegs, vorziehen. Status getrennt in sonderstatus.json (IDs beginnen mit geschenk-/frist-/blumen-).
+- Dienstplan-PDF: Spalten = Werktage mit Datum, je Person 4 Zeilen (Beginn, Pause von, Pause bis, Ende; ohne Pause nur Beginn + Ende). Nutzer-Zeile per Name (in der App einstellbar, nie im Repo). Farbig/leer = Urlaub oder frei. PDF enthält Namen von Kolleginnen: NIE ins Repo, auch nicht als Testdatei.
