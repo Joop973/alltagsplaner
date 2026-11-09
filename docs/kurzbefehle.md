@@ -150,7 +150,7 @@ Fertig. Ganz unten steht "Wiederholung beenden".
 - Kurzbefehl von Hand starten (▶ unten rechts). Beim ersten Mal fragt iOS nach Erlaubnis (Standort, Wecker, Scriptable): **Immer erlauben**.
 - Scriptable → **Planer** → **Log**. Dort steht "Vom Kurzbefehl erhalten: …" und für jede Strecke z. B. `"15 Min." = 15 min`.
   Steht dort **unlesbar** oder **FEHLER**: Screenshot an mich.
-- Uhr-App: Wecker "Planer: In 5 min los zu …". Kalender "Planer": Aufgaben und Fahrten.
+- Uhr-App: Wecker "Planer: In 5 min los zu …". Kalender "Planer": Aufgaben (Fahrten nur im Tagesplan der App).
 
 Falls "Reisezeit abrufen" mit der Adresse als Text nicht klarkommt (Fehlermeldung beim Ziel): vor Schritt 8 bzw. 13 die Aktion **Adressen aus Eingabe abrufen** mit dem Wert aus Schritt 7 bzw. 12 einfügen und deren Ergebnis als Ziel nehmen (beim Start genauso).
 

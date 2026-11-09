@@ -104,7 +104,7 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 - Fahrzeiten: nur neue oder über 30 Tage alte Strecken abfragen. Phase (a) fragt alle möglichen Strecken ab (heim, hin, direkt).
 - Ganztägige Termine werden ignoriert; Kalender können in den Einstellungen ignoriert werden.
 - Kalender "Arbeit": nur selbst angelegte Einträge (Notiz enthält "planer-schicht") werden geändert.
-- Kalender "Planer": Aufgaben und Fahrten. Pause/Ruhe nicht. Beim Neuplanen alle noch nicht beendeten Einträge löschen.
+- Kalender "Planer": nur Aufgaben (Nutzerwunsch 09.11.: Fahrten nicht einzeln im Kalender; Schalter "Fahrten im Kalender" in den Einstellungen, Standard aus). Pause/Ruhe nicht. Beim Neuplanen alle noch nicht beendeten Einträge löschen.
 - Kalender anlegen: Scriptable kann das nicht. Lösung: Kurzbefehl "Planer Kalender" ("Neuen Kalender hinzufügen"), Fallback von Hand.
 - 24.12. und 31.12. sind frei (einstellbar als "weitere freie Tage").
 - Vorziehen erlaubt: Ist am Fälligkeitstag kein Platz, bis zu 2 Tage früher (einstellbar), danach später.

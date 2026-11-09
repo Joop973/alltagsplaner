@@ -178,6 +178,8 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   const bloecke = u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe'))
     .map(t => `${zeit(t.startDate)} ${t.title}`);
   assert.deepStrictEqual(bloecke, ['18:15 Bad putzen', '18:45 Staubsaugen']);
+  // Fahrten stehen standardmäßig nicht im Kalender
+  assert.strictEqual(u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-fahrt')).length, 0);
   assert.strictEqual(u.mitteilungen.length, 2);
   assert.ok(u.mitteilungen[0].actions[0].url.startsWith('scriptable:///run/Planer%20Aktion?aktion=erledigt&id=bad'));
 

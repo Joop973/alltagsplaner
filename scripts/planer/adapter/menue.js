@@ -393,6 +393,7 @@ async function einstellungenMenue() {
       `Schichtwoche neu festlegen (jetzt: Woche ${sch.referenzMontag ? SCH.wochenTyp(new Date(), sch.referenzMontag, sch.referenzTyp) : '?'})`,
       `Weitere freie Tage: ${(sch.extraFrei || []).join(', ') || 'keine'}`,
       'Kalender beachten / ignorieren',
+      `Fahrten im Kalender "Planer": ${einst.kalender.fahrtenEintragen ? 'an' : 'aus'}`,
     ]);
     if (i === -1) return;
     if (i === 0) await regelnMenue(einst);
@@ -405,6 +406,7 @@ async function einstellungenMenue() {
       if (t != null) { sch.extraFrei = t.split(',').map(x => x.trim()).filter(Boolean); await PLAN.einstellungenSpeichern(einst); }
     }
     if (i === 6) await kalenderMenue(einst);
+    if (i === 7) { einst.kalender.fahrtenEintragen = !einst.kalender.fahrtenEintragen; await PLAN.einstellungenSpeichern(einst); }
   }
 }
 

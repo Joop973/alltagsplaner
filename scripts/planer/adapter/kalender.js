@@ -86,7 +86,7 @@ async function planerSchreiben(einst, plan, jetzt, log) {
     await e.save();
     neu++;
   }
-  for (const f of plan.ablauf.fahrten) {
+  for (const f of (einst.kalender.fahrtenEintragen ? plan.ablauf.fahrten : [])) {
     if (new Date(f.ankunft) <= jetzt || f.minuten <= 0) continue;
     const e = new CalendarEvent();
     e.calendar = cal;

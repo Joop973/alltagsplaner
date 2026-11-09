@@ -5,7 +5,7 @@ function standardEinstellungen() {
   return {
     version: 1,
     eingerichtet: false,
-    kalender: { planer: 'Planer', arbeit: 'Arbeit', ignorieren: [] },
+    kalender: { planer: 'Planer', arbeit: 'Arbeit', ignorieren: [], fahrtenEintragen: false },
     orte: {
       zuhause: { adresse: '', stichwoerter: ['zuhause', 'daheim'] },
       arbeit: { name: 'Arbeit', adresse: '', stichwoerter: ['arbeit'] },
