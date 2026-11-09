@@ -6,7 +6,7 @@ Die Scriptable-Aktion heißt je nach Sprache **Script ausführen** oder **Run Sc
 
 Wichtig bei der Scriptable-Aktion: auf den Pfeil **>** tippen und **Bei Ausführung anzeigen / Show When Run** ausschalten.
 
-Namen auf iOS 27: **Suche Wecker**, **Wecker löschen**, **Wecker ein/aus**, **Neuer Wecker**. "Reisezeit abrufen" heißt **Wegzeit abrufen** (Verkehrsmittel **Radfahren** / **Auto**). Das Ergebnis von "Script ausführen" heißt **Output**.
+Namen auf iOS 27: **Suche Wecker**, **Wecker löschen**, **Wecker ein/aus**, **Neuer Wecker**. "Reisezeit abrufen" heißt **Wegzeit abrufen** (Verkehrsmittel **Radfahren** / **Auto**). Das Ergebnis von "Script ausführen" heißt **Output**. "Wiederholungsobjekt" heißt **Objekt wiederholen**, "Wiederholungsindex" heißt **Index wiederholen** (wird nicht gebraucht).
 
 Wenn ein Name hier nicht genau so heißt wie bei dir: Nimm die Aktion, die am ähnlichsten klingt, und schreib mir den Namen. Ich passe die Anleitung an.
 
@@ -132,6 +132,7 @@ Fertig. Ganz unten steht "Wiederholung beenden".
 
 ### Prüfen, bevor du testest
 
+- In **Wegzeit abrufen** stehen bei "von" und "nach" die Ergebnisse der zwei Aktionen darüber (beide heißen "Wörterbuchwert") – **nie** "Objekt wiederholen" oder "Index wiederholen". Fehler "Keine Konvertierung von Wörterbuch in Standort" heißt: dort steht "Objekt wiederholen".
 - Fehler **"Wegzeit abrufen benötigt einen Zielort"**: Fast immer steht in Schritt 6/7 (bzw. 11/12) bei "in" **Wörterbuchwert** statt **Wiederholungsobjekt**. Dann sucht die Aktion "von"/"nach" in der ganzen Liste und findet nichts.
 
 - Zwischen den beiden Script-Aktionen gibt es **keine** "Wenn"-Aktion.
