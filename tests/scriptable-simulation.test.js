@@ -158,7 +158,9 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
 
   // Kurzbefehl liefert 15 Min. für alles
   const a2 = await u.script('Planer Planen.js', { shortcutParameter: 'a' });
-  const text = ['b', ...a2.strecken.map(s => `${s.id}|15 Min.`)].join('\n');
+  // Kurzbefehl: Text "RAD", Fahrzeiten, "AUTO", Fahrzeiten (Listen werden zeilenweise eingefügt)
+  const text = ['RAD', ...Array.from(a2.rad, () => '15 Min.'), 'AUTO', ...Array.from(a2.auto, () => '15 Min.')].join('\n');
+  assert.ok(a2.rad.length > 0 && a2.auto.length > 0);
   const b = await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.ok(!b.fehler, b.fehler);
   assert.deepStrictEqual(Array.from(b.wecker, w => w.zeit), ['16:40', '19:40', '06:40']); // 06:40 = Freitagsschicht

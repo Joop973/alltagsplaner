@@ -31,7 +31,8 @@ function pruefen(einst) {
   if (!einst.eingerichtet) throw new Error('Bitte zuerst in "Planer" die Ersteinrichtung machen.');
 }
 
-// Phase (a): Schichten schreiben, benötigte Strecken an den Kurzbefehl geben.
+// Phase (a): Schichten schreiben, benötigte Strecken an den Kurzbefehl geben
+// (getrennte Listen "rad" und "auto" mit {von, nach}).
 async function phaseA() {
   const { einst, cache } = await laden();
   pruefen(einst);
@@ -42,15 +43,10 @@ async function phaseA() {
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
   const noetig = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
-  const offen = {};
-  const strecken = noetig.map((s, i) => {
-    const id = `s${i + 1}`;
-    offen[id] = s;
-    return { id, von: s.von, nach: s.nach, modus: s.modus };
-  });
-  await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), strecken: offen });
-  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, ${strecken.length} davon abfragen.`);
-  return { strecken, anzahl: strecken.length };
+  const { ausgabe, offen } = F.streckenAufteilen(noetig);
+  await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), ...offen });
+  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, abfragen: ${ausgabe.rad.length} Rad, ${ausgabe.auto.length} Auto.`);
+  return ausgabe;
 }
 
 // Phase (b): Fahrzeiten übernehmen, planen, Kalender + Mitteilungen schreiben, Wecker zurückgeben.
@@ -59,8 +55,9 @@ async function phaseB(text) {
   pruefen(einst);
   const jetzt = new Date();
   await log('--- Planen Phase b ---');
-  const offen = await DAT.lesen('offen.json', { strecken: {} });
-  const erg = F.ergebnisseLesen(text, offen.strecken);
+  const offen = await DAT.lesen('offen.json', { strecken: {}, rad: [], auto: [] });
+  await log(`Vom Kurzbefehl erhalten: ${JSON.stringify(String(text).slice(0, 600))}`);
+  const erg = F.ergebnisseLesen(text, offen);
   for (const e of erg) {
     const s = offen.strecken[e.id];
     await log(`Fahrzeit ${s.modus} ${s.von} -> ${s.nach}: "${e.roh}" = ${e.min == null ? 'unlesbar' : e.min + ' min'}`);

@@ -116,3 +116,4 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 - Wecker auch für den Weg zur Arbeit. Kein Wecker für Heimfahrten.
 - Wecker-Aktionen auf dem iPhone (iOS 27): "Suche Wecker", "Wecker löschen" (vorhanden -> löschen statt ausschalten), "Wecker ein/aus", "Neuer Wecker".
 - Scriptable-Aktion "Script ausführen": kurzes Antippen von "Parameter" öffnet Dateien; Variablen per langem Drücken -> "Variable auswählen". Phase a braucht keinen Parameter.
+- Kurzbefehl so einfach wie möglich halten (Nutzer baut ihn von Hand): Phase a gibt getrennte Listen "rad" und "auto" mit {von, nach} aus; zwei Wiederholungen ohne "Wenn"; Rückgabe als ein Text "RAD"/Fahrzeiten/"AUTO"/Fahrzeiten (Zuordnung über die Reihenfolge, leere Zeilen werden übersprungen).

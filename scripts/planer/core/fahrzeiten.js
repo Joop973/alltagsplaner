@@ -24,18 +24,56 @@ function minutenAusText(x) {
   return null;
 }
 
-// Text vom Kurzbefehl: erste Zeile "b", dann je Zeile "s1|15 Min."
-// offen: {s1: {key, ...}} -> [{key, id, min, roh}]
+// Strecken für den Kurzbefehl aufteilen: eine Liste fürs Rad, eine fürs Auto.
+// noetig: [{key, von, nach, modus}] -> {ausgabe: {rad, auto, anzahl}, offen: {strecken, rad, auto}}
+function streckenAufteilen(noetig) {
+  const offen = { strecken: {}, rad: [], auto: [] };
+  const ausgabe = { rad: [], auto: [], anzahl: noetig.length };
+  noetig.forEach((s, i) => {
+    const id = `s${i + 1}`;
+    offen.strecken[id] = s;
+    const teil = s.modus === 'Fahrrad' ? 'rad' : 'auto';
+    offen[teil].push(id);
+    ausgabe[teil].push({ von: s.von, nach: s.nach });
+  });
+  return { ausgabe, offen };
+}
+
+// Ist der Text vom Kurzbefehl die Rückgabe der Fahrzeiten (Phase b)?
+function istPhaseB(text) {
+  const t = String(text || '');
+  return /^\s*b\s*$/im.test(t.split(/\r?\n/)[0] || '') || /^\s*(RAD|AUTO)\s*$/im.test(t);
+}
+
+// Text vom Kurzbefehl, z. B.
+//   RAD
+//   15 Min.        <- Fahrzeiten in derselben Reihenfolge wie die Liste "rad"
+//   AUTO
+//   20 Min.
+// Leere Zeilen werden übersprungen. Altes Format "s1|15 Min." geht auch.
+// offen: {strecken: {s1: {key}}, rad: [ids], auto: [ids]} -> [{key, id, min, roh}]
 function ergebnisseLesen(text, offen) {
+  const o = offen || {};
+  const strecken = o.strecken || {};
   const ergebnisse = [];
-  for (const zeile of String(text || '').split(/\r?\n/)) {
+  const zaehler = { rad: 0, auto: 0 };
+  let teil = null;
+  for (const roheZeile of String(text || '').split(/\r?\n/)) {
+    const zeile = roheZeile.trim();
+    if (!zeile) continue;
+    const gross = zeile.toUpperCase();
+    if (gross === 'RAD' || gross === 'AUTO') { teil = gross.toLowerCase(); continue; }
     const i = zeile.indexOf('|');
-    if (i < 0) continue;
-    const id = zeile.slice(0, i).trim();
-    const roh = zeile.slice(i + 1).trim();
-    const strecke = (offen || {})[id];
-    if (!strecke) continue;
-    ergebnisse.push({ id, key: strecke.key, roh, min: minutenAusText(roh) });
+    if (i > 0 && strecken[zeile.slice(0, i).trim()]) {
+      const id = zeile.slice(0, i).trim();
+      const roh = zeile.slice(i + 1).trim();
+      ergebnisse.push({ id, key: strecken[id].key, roh, min: minutenAusText(roh) });
+      continue;
+    }
+    if (!teil) continue; // z. B. "b"
+    const id = (o[teil] || [])[zaehler[teil]++];
+    if (!id || !strecken[id]) continue;
+    ergebnisse.push({ id, key: strecken[id].key, roh: zeile, min: minutenAusText(zeile) });
   }
   return ergebnisse;
 }
@@ -58,4 +96,4 @@ function istFrisch(cache, key, heuteYmd, maxTage) {
   return D.tageZwischen(D.ausYmd(e.datum), D.ausYmd(heuteYmd)) <= maxTage;
 }
 
-module.exports = { minutenAusText, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch };
+module.exports = { minutenAusText, streckenAufteilen, istPhaseB, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch };

@@ -42,7 +42,7 @@ test('Fahrzeit-Text lesen', () => {
 });
 
 test('Ergebnisse lesen und cachen', () => {
-  const offen = { s1: { key: 'Auto|a|b' }, s2: { key: 'Fahrrad|a|c' } };
+  const offen = { strecken: { s1: { key: 'Auto|a|b' }, s2: { key: 'Fahrrad|a|c' } } };
   const erg = F.ergebnisseLesen('b\ns1|15 Min.\ns2|\nquatsch', offen);
   assert.deepStrictEqual(erg.map(e => [e.key, e.min]), [['Auto|a|b', 15], ['Fahrrad|a|c', null]]);
   const cache = F.cacheAktualisieren({}, erg, '2026-11-12');
@@ -50,4 +50,34 @@ test('Ergebnisse lesen und cachen', () => {
   assert.strictEqual(F.istFrisch(cache, 'Auto|a|b', '2026-12-12', 30), true);
   assert.strictEqual(F.istFrisch(cache, 'Auto|a|b', '2026-12-13', 30), false);
   assert.strictEqual(F.cacheWert(cache, 'x'), null);
+});
+
+test('Strecken aufteilen und Antwort im Format RAD/AUTO lesen', () => {
+  const noetig = [
+    { key: 'Fahrrad|z|w', von: 'z', nach: 'w', modus: 'Fahrrad' },
+    { key: 'Auto|z|p', von: 'z', nach: 'p', modus: 'Auto' },
+    { key: 'Fahrrad|w|z', von: 'w', nach: 'z', modus: 'Fahrrad' },
+    { key: 'Auto|p|z', von: 'p', nach: 'z', modus: 'Auto' },
+  ];
+  const { ausgabe, offen } = F.streckenAufteilen(noetig);
+  assert.deepStrictEqual(ausgabe.rad, [{ von: 'z', nach: 'w' }, { von: 'w', nach: 'z' }]);
+  assert.deepStrictEqual(ausgabe.auto, [{ von: 'z', nach: 'p' }, { von: 'p', nach: 'z' }]);
+  assert.strictEqual(ausgabe.anzahl, 4);
+  const text = 'RAD\n15 Min.\n\n16 Min.\nAUTO\n20 Min.\n1 Std. 5 Min.\n';
+  const erg = F.ergebnisseLesen(text, offen);
+  assert.deepStrictEqual(erg.map(e => [e.key, e.min]), [
+    ['Fahrrad|z|w', 15], ['Fahrrad|w|z', 16], ['Auto|z|p', 20], ['Auto|p|z', 65],
+  ]);
+  // Rad-Liste leer: Zeile bleibt leer
+  const nurAuto = F.streckenAufteilen([noetig[1]]);
+  assert.deepStrictEqual(F.ergebnisseLesen('RAD\n\nAUTO\n12 Min.', nurAuto.offen).map(e => e.min), [12]);
+});
+
+test('Phase b erkennen', () => {
+  assert.strictEqual(F.istPhaseB(''), false);
+  assert.strictEqual(F.istPhaseB('a'), false);
+  assert.strictEqual(F.istPhaseB('RAD\n\nAUTO\n'), true);
+  assert.strictEqual(F.istPhaseB('rad\n15 Min.\nauto'), true);
+  assert.strictEqual(F.istPhaseB('b\ns1|15'), true);
+  assert.strictEqual(F.istPhaseB('Bahnhof'), false);
 });
