@@ -13,6 +13,7 @@ const AK = hole('core/aktion');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
+const ORT = hole('adapter/orte');
 
 const KURZBEFEHL = 'Planer planen';
 const log = t => DAT.log(t);
@@ -42,10 +43,14 @@ async function phaseA() {
   const termine = await KAL.termineLesen(einst, jetzt);
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
-  const noetig = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
+  const fehlen = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
+  const { gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute);
+  for (const x of schlecht) {
+    await log(`WARNUNG Ort nicht gefunden: "${x.ort}" – nehme ${einst.regeln.fallbackMin} min. Tipp: im Termin die genaue Adresse eintragen.`);
+  }
   const { ausgabe, offen } = F.streckenAufteilen(noetig);
   await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), ...offen });
-  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, abfragen: ${ausgabe.rad.length} Rad, ${ausgabe.auto.length} Auto.`);
+  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, abfragen: ${ausgabe.rad.length} Rad, ${ausgabe.auto.length} Auto, ${schlecht.length} Ort(e) nicht gefunden.`);
   return ausgabe;
 }
 

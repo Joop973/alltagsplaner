@@ -66,6 +66,11 @@ function umgebung({ jetzt, nurRelativ }) {
     Safari: { open: u => geoeffnet.push(u) },
     Script: { setShortcutOutput: x => { ausgabe = x; }, complete() {} },
     config: { runsInApp: false },
+    // Adresssuche: Texte mit "unbekannt" werden nicht gefunden
+    Location: {
+      geocode: async text => (/unbekannt/i.test(text) ? []
+        : [{ thoroughfare: `Gefunden ${text.split(',')[0]}`, subThoroughfare: '1', postalCode: '11111', locality: 'Teststadt' }]),
+    },
     Alert: class { addAction() {} async presentAlert() { return 0; } },
     // Request: liefert Dateien aus diesem Repo wie raw.githubusercontent.com
     Request: class {
@@ -137,6 +142,7 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   ]));
   u.termin('Privat', 'Ergo', um(17), um(17, 45), 'Praxisplatz 3, Teststadt');
   u.termin('Privat', 'Training', um(20), um(21, 30), 'Sporthalle Teststadt');
+  u.termin('Privat', 'Treffen', new Date(2026, 10, 15, 12), new Date(2026, 10, 15, 13), 'unbekannt irgendwo'); // Ort nicht auffindbar
   u.termin('Geburtstage', 'Geburtstag X', DO, new Date(2026, 10, 13), '', true); // ganztägig: ignoriert
   for (let i = 1; i < 7; i++) {
     const t = new Date(2026, 10, 12 + i);
@@ -161,6 +167,9 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   // Kurzbefehl: Text "RAD", Fahrzeiten, "AUTO", Fahrzeiten (Listen werden zeilenweise eingefügt)
   const text = ['RAD', ...Array.from(a2.rad, () => '15 Min.'), 'AUTO', ...Array.from(a2.auto, () => '15 Min.')].join('\n');
   assert.ok(a2.rad.length > 0 && a2.auto.length > 0);
+  const alleOrte = [...Array.from(a2.rad), ...Array.from(a2.auto)].flatMap(s => [s.von, s.nach]);
+  assert.ok(alleOrte.every(o => o.startsWith('Gefunden ')), alleOrte.join(' / '));
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "unbekannt irgendwo"/);
   const b = await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.ok(!b.fehler, b.fehler);
   assert.deepStrictEqual(Array.from(b.wecker, w => w.zeit), ['16:40', '19:40', '06:40']); // 06:40 = Freitagsschicht

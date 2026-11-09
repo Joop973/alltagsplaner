@@ -81,3 +81,11 @@ test('Phase b erkennen', () => {
   assert.strictEqual(F.istPhaseB('b\ns1|15'), true);
   assert.strictEqual(F.istPhaseB('Bahnhof'), false);
 });
+
+test('Adresse aus Kartenergebnis', () => {
+  assert.strictEqual(O.adresseAusOrt({ thoroughfare: 'Weg', subThoroughfare: '2', postalCode: '11111', locality: 'Stadt' }), 'Weg 2, 11111 Stadt');
+  assert.strictEqual(O.adresseAusOrt({ name: 'Sporthalle', locality: 'Stadt' }), 'Sporthalle, Stadt');
+  assert.strictEqual(O.adresseAusOrt({ location: { latitude: 52.1, longitude: 8.2 } }), '52.1,8.2');
+  assert.strictEqual(O.adresseAusOrt(undefined), null);
+  assert.strictEqual(O.adresseAusOrt({}), null);
+});

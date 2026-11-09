@@ -133,6 +133,7 @@ Fertig. Ganz unten steht "Wiederholung beenden".
 ### Prüfen, bevor du testest
 
 - In **Wegzeit abrufen** stehen bei "von" und "nach" die Ergebnisse der zwei Aktionen darüber (beide heißen "Wörterbuchwert") – **nie** "Objekt wiederholen" oder "Index wiederholen". Fehler "Keine Konvertierung von Wörterbuch in Standort" heißt: dort steht "Objekt wiederholen".
+- Fehler **"Keine Konvertierung von Text in Standort"**: sollte nicht mehr vorkommen, weil Scriptable Orte vorher prüft. Falls doch: "Planer Update" ausführen. Nicht gefundene Orte stehen im Log ("Ort nicht gefunden").
 - Fehler **"Wegzeit abrufen benötigt einen Zielort"**: Fast immer steht in Schritt 6/7 (bzw. 11/12) bei "in" **Wörterbuchwert** statt **Wiederholungsobjekt**. Dann sucht die Aktion "von"/"nach" in der ganzen Liste und findet nichts.
 
 - Zwischen den beiden Script-Aktionen gibt es **keine** "Wenn"-Aktion.

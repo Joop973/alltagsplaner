@@ -41,4 +41,17 @@ function verkehrsmittel(vonArt, nachArt, direkt, v) {
 
 function streckenSchluessel(modus, von, nach) { return `${modus}|${norm(von)}|${norm(nach)}`; }
 
-module.exports = { norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };
+// Ergebnis der Adresssuche (Adresssuche in Scriptable) -> Adresstext für "Wegzeit abrufen".
+// null, wenn nichts Brauchbares gefunden wurde.
+function adresseAusOrt(o) {
+  if (!o) return null;
+  const strasse = [o.thoroughfare, o.subThoroughfare].filter(Boolean).join(' ');
+  const ort = [o.postalCode, o.locality].filter(Boolean).join(' ');
+  if (strasse && ort) return `${strasse}, ${ort}`;
+  const teile = [o.name, ort || o.locality].filter(Boolean);
+  if (teile.length) return [...new Set(teile)].join(', ');
+  const loc = o.location;
+  return loc && typeof loc.latitude === 'number' ? `${loc.latitude},${loc.longitude}` : null;
+}
+
+module.exports = { adresseAusOrt, norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };
