@@ -100,4 +100,13 @@ async function planerSchreiben(einst, plan, jetzt, log) {
   await log(`Planer-Kalender: ${geloescht} gelöscht, ${neu} geschrieben.`);
 }
 
-module.exports = { finde, fehlendeKalender, alleNamen, termineLesen, schichtenSchreiben, planerSchreiben };
+// Geburtstage-Kalender (ganztägige Einträge) -> [{titel, datum}]
+async function geburtstageLesen(einst, jetzt, tage) {
+  const cal = await finde(einst.geburtstage.kalender);
+  if (!cal) return [];
+  const von = D.tagesBeginn(jetzt);
+  const ev = await CalendarEvent.between(von, D.plusTage(von, tage), [cal]);
+  return ev.map(e => ({ titel: e.title, datum: D.ymd(e.startDate) }));
+}
+
+module.exports = { geburtstageLesen, finde, fehlendeKalender, alleNamen, termineLesen, schichtenSchreiben, planerSchreiben };

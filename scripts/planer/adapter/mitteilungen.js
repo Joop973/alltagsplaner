@@ -2,7 +2,8 @@
 'use strict';
 
 const PRAEFIX = 'planer-';
-const MAX = 50; // iOS erlaubt nur begrenzt viele geplante Mitteilungen
+const MAX = 50; // iOS erlaubt höchstens 64 geplante Mitteilungen
+const MAX_GESAMT = 60;
 
 function aktionsUrl(aktion, block) {
   const q = `aktion=${aktion}&id=${encodeURIComponent(block.aufgabeId)}&ende=${encodeURIComponent(new Date(block.end).toISOString())}`;
@@ -37,6 +38,25 @@ async function bloeckeAnkuendigen(bloecke, jetzt) {
   return n;
 }
 
+// weitere: [{id, zeit, titel, text}] – nur zukünftige, nach Zeit, bis insgesamt MAX_GESAMT
+async function weitereAnkuendigen(weitere, jetzt, schonGeplant) {
+  let n = 0;
+  const frei = Math.max(0, MAX_GESAMT - (schonGeplant || 0));
+  const liste = weitere.filter(w => new Date(w.zeit) > jetzt).sort((a, b) => new Date(a.zeit) - new Date(b.zeit));
+  for (const w of liste.slice(0, frei)) {
+    const m = new Notification();
+    m.identifier = w.id.startsWith(PRAEFIX) ? w.id : PRAEFIX + w.id;
+    m.threadIdentifier = 'planer';
+    m.title = w.titel;
+    m.body = w.text;
+    m.sound = 'default';
+    m.setTriggerDate(new Date(w.zeit));
+    await m.schedule();
+    n++;
+  }
+  return n;
+}
+
 async function sofort(titel, text) {
   const m = new Notification();
   m.identifier = `${PRAEFIX}hinweis-${Date.now()}`;
@@ -46,4 +66,4 @@ async function sofort(titel, text) {
   await m.schedule();
 }
 
-module.exports = { alteEntfernen, bloeckeAnkuendigen, sofort, aktionsUrl };
+module.exports = { alteEntfernen, bloeckeAnkuendigen, weitereAnkuendigen, sofort, aktionsUrl };

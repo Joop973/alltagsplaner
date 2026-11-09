@@ -193,7 +193,8 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.deepStrictEqual(bloecke, ['18:15 Bad putzen', '18:45 Staubsaugen']);
   // Fahrten stehen standardmäßig nicht im Kalender
   assert.strictEqual(u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-fahrt')).length, 0);
-  assert.strictEqual(u.mitteilungen.length, 2);
+  assert.strictEqual(u.mitteilungen.filter(m => m.title.startsWith('Jetzt:')).length, 2);
+  assert.strictEqual(u.mitteilungen.filter(m => m.title === 'Checkliste: Training').length, 1);
   assert.ok(u.mitteilungen[0].actions[0].url.startsWith('scriptable:///run/Planer%20Aktion?aktion=erledigt&id=bad'));
 
   // Erinnerungen zum Abhaken (heute + morgen)
@@ -203,7 +204,8 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   // Nochmal planen: keine doppelten Einträge
   await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.strictEqual(u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe')).length, 2);
-  assert.strictEqual(u.mitteilungen.length, 2);
+  assert.strictEqual(u.mitteilungen.filter(m => m.title.startsWith('Jetzt:')).length, 2);
+  assert.strictEqual(u.mitteilungen.filter(m => m.title === 'Checkliste: Training').length, 1);
 
   // Knopf "Erledigt" um 18:20
   u.setJetzt(um(18, 20));
@@ -317,6 +319,55 @@ test('Orte: nicht gefundene werden beim nächsten Lauf neu gesucht', async () =>
   geht = true;
   a = await u.script('Planer Planen.js', {});
   assert.ok(a.anzahl > 0, 'beim zweiten Mal gefunden');
+});
+
+test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen-Liste', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), '[]');
+  fs.writeFileSync(u.daten('geburtstage.json'), JSON.stringify({ eigene: [{ name: 'Oma', datum: '11-15' }], geschenke: { 'Max Mustermann': true } }));
+  fs.writeFileSync(u.daten('fristen.json'), JSON.stringify([{ id: 'tuev', name: 'TÜV', datum: '2026-12-01', monate: 24, vorlaufWochen: [4, 1], dauer: 15 }]));
+  u.termin('Geburtstage', 'Max Mustermanns Geburtstag', new Date(2026, 10, 24), new Date(2026, 10, 25), '', true);
+  u.termin('Privat', 'Training', um(12, 20), um(12, 21, 30), 'Sporthalle Teststadt');
+
+  await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+
+  const titel = u.mitteilungen.map(m => m.title);
+  assert.ok(titel.includes('Checkliste: Training'), titel.join(' | '));
+  assert.ok(titel.includes('Geburtstag heute'), 'Oma am 15.11.');
+  assert.ok(titel.includes('Frist in 1 Woche'));
+  assert.ok(titel.includes('Geschenk fehlt noch'), 'Max am 24.11. -> Erinnerung am 17.11.');
+  assert.strictEqual(titel.filter(t => t === 'Geburtstag heute').length, 1, 'nur Oma (15.11.), Max (24.11.) ist weiter als 8 Tage');
+  const check = u.mitteilungen.find(m => m.title === 'Checkliste: Training');
+  assert.strictEqual(check.trigger.getHours() * 60 + check.trigger.getMinutes(), 19 * 60 + 10); // Abfahrt 19:40 (Ersatz 20 min) - 30
+  // Geschenk für Max ab 10.11. fällig -> heute eingeplant; Frist-Aufgabe (ab 03.11.) auch
+  const planer = u.termine.filter(t => t.calendar.title === 'Planer').map(t => t.title);
+  assert.ok(planer.some(t => t.startsWith('Geschenk für Max Mustermann')), planer.join(' | '));
+  assert.ok(planer.some(t => t.startsWith('TÜV (Frist')), planer.join(' | '));
+  // Fristen-Liste in der Erinnerungen-App
+  const fr = u.erinnerungen.find(r => r.calendar.title === 'Fristen');
+  assert.strictEqual(fr.title, 'TÜV (fällig 01.12.2026)');
+
+  // Frist abhaken -> nächstes Datum in 24 Monaten
+  fr.isCompleted = true;
+  fr.completionDate = um(12, 10);
+  await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  const fristen = JSON.parse(fs.readFileSync(u.daten('fristen.json'), 'utf8'));
+  assert.strictEqual(fristen[0].datum, '2028-12-01');
+
+  // Knopf "Erledigt" für das Geschenk
+  await u.script('Planer Aktion.js', { queryParameters: { aktion: 'erledigt', id: 'geschenk-max-mustermann-2026' } });
+  const st = JSON.parse(fs.readFileSync(u.daten('sonderstatus.json'), 'utf8'));
+  assert.strictEqual(st.erledigt['geschenk-max-mustermann-2026'], '2026-11-12');
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
 });
 
 test('Manifest enthält alle Scripts', () => {

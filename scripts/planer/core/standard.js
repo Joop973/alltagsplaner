@@ -12,6 +12,8 @@ function standardEinstellungen() {
     },
     // Aufgaben von heute und morgen zum Abhaken in der Erinnerungen-App
     erinnerungen: { an: true, liste: 'Planer', tage: 2 },
+    geburtstage: { kalender: 'Geburtstage', uhrzeit: '06:00', geschenkVorTage: 14, geschenkDauer: 30 },
+    fristen: { liste: 'Fristen', uhrzeit: '06:00' },
     verkehr: { zuhauseArbeit: 'Fahrrad', direktVonArbeit: 'Fahrrad', sonst: 'Auto' },
     regeln: {
       pauseNachHeim: 15,
@@ -53,6 +55,35 @@ function standardAufgaben() {
   ];
 }
 
+// Checklisten: Stichwort am Wortanfang im Termintitel -> Mitteilung zu Beginn der Ruhe vor der Abfahrt
+function standardChecklisten() {
+  return [
+    { id: 'training', name: 'Trainingstasche', an: true,
+      stichwoerter: ['training', 'sport', 'fitness', 'schwimm'],
+      punkte: ['Sportsachen', 'Hallenschuhe', 'Handtuch', 'Duschzeug', 'Trinkflasche', 'Schloss'] },
+    { id: 'behoerde', name: 'Behörde', an: true,
+      stichwoerter: ['amt', 'behörde', 'bürgerbüro', 'bürgeramt', 'rathaus', 'finanzamt', 'zulassung', 'jobcenter', 'notar'],
+      punkte: ['Personalausweis', 'Unterlagen / Formulare', 'Terminbestätigung', 'Portemonnaie', 'Kugelschreiber'] },
+    { id: 'arzt', name: 'Arzt', an: true,
+      stichwoerter: ['arzt', 'ärztin', 'zahnarzt', 'zahnärztin', 'hausarzt', 'klinik', 'krankenhaus', 'labor'],
+      punkte: ['Versichertenkarte', 'Überweisung', 'Medikamentenliste', 'Befunde', 'Portemonnaie'] },
+    { id: 'feier', name: 'Feier / Geburtstag', an: true,
+      stichwoerter: ['geburtstag', 'feier', 'party', 'hochzeit', 'einladung', 'grillen'],
+      punkte: ['Geschenk', 'Karte', 'Mitbringsel / Getränke', 'Portemonnaie'] },
+    { id: 'reise', name: 'Reise', an: true,
+      stichwoerter: ['urlaub', 'reise', 'flug', 'flughafen', 'bahnhof', 'zug'],
+      punkte: ['Ausweis', 'Tickets', 'Ladekabel', 'Medikamente', 'Portemonnaie', 'Schlüssel'] },
+  ];
+}
+
+// Blumen: zufällig alle 3–6 Wochen, nicht 14 Tage vor/nach festen Anlässen; Anlässe 2 Tage vorher
+function standardBlumen() {
+  return {
+    an: true, minWochen: 3, maxWochen: 6, sperreTage: 14, dauer: 20, vorTage: 2, naechste: null,
+    anlaesse: [{ name: 'Valentinstag', datum: '02-14' }, { name: 'Weltfrauentag', datum: '03-08' }],
+  };
+}
+
 function istObjekt(x) { return x && typeof x === 'object' && !Array.isArray(x); }
 
 // Gespeicherte Werte über Standardwerte legen (neue Einstellungen nach Updates bekommen Standard).
@@ -67,4 +98,4 @@ function zusammenfuehren(standard, gespeichert) {
   return r;
 }
 
-module.exports = { standardEinstellungen, standardAufgaben, zusammenfuehren };
+module.exports = { standardEinstellungen, standardAufgaben, standardChecklisten, standardBlumen, zusammenfuehren };

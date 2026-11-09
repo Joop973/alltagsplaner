@@ -9,8 +9,8 @@ const D = hole('core/datum');
 
 const MARKE = 'planer-aufgabe:';
 
-async function liste(einst, log) {
-  const name = einst.erinnerungen.liste;
+async function liste(einst, log, name) {
+  name = name || einst.erinnerungen.liste;
   try {
     const l = (await Calendar.forReminders()).find(c => c.title === name);
     if (l) return l;
@@ -61,4 +61,37 @@ async function schreiben(einst, bloecke, jetzt, log) {
   await log(`Erinnerungen: ${weg} alte entfernt, ${neu} neu.`);
 }
 
-module.exports = { erledigteLesen, schreiben };
+// ---------- Fristen-Liste (mit Fälligkeitsdatum: die Erinnerungen-App erinnert selbst) ----------
+
+const MARKE_FRIST = 'planer-frist:';
+
+async function fristenErledigteLesen(einst, log) {
+  const l = await liste(einst, log, einst.fristen.liste);
+  if (!l) return [];
+  return (await Reminder.all([l]))
+    .filter(r => r.isCompleted && (r.notes || '').includes(MARKE_FRIST))
+    .map(r => {
+      const m = (r.notes || '').match(/planer-frist:([^|\s]+)/);
+      return m ? { id: m[1], datum: D.ymd(r.completionDate ? new Date(r.completionDate) : new Date()) } : null;
+    })
+    .filter(Boolean);
+}
+
+// fristen: [{name, datum}], idFuer(f) -> Aufgaben-ID
+async function fristenSchreiben(einst, fristen, idFuer, log) {
+  const l = await liste(einst, log, einst.fristen.liste);
+  if (!l) return;
+  for (const r of (await Reminder.all([l])).filter(x => (x.notes || '').includes(MARKE_FRIST))) r.remove();
+  for (const f of fristen) {
+    const r = new Reminder();
+    r.calendar = l;
+    r.title = `${f.name} (fällig ${D.deutschDatum(f.datum)})`;
+    r.notes = `${MARKE_FRIST}${idFuer(f)}`;
+    r.dueDate = D.ausYmd(f.datum);
+    r.dueDateIncludesTime = false;
+    await r.save();
+  }
+  await log(`Fristen-Liste: ${fristen.length} Einträge.`);
+}
+
+module.exports = { erledigteLesen, schreiben, fristenErledigteLesen, fristenSchreiben };

@@ -16,6 +16,8 @@ const MIT = hole('adapter/mitteilungen');
 const ORT = hole('adapter/orte');
 const ERI = hole('adapter/erinnerungen');
 const AKT = hole('core/aktion');
+const SON = hole('adapter/sonder');
+const SO = hole('core/sonder');
 
 const KURZBEFEHL = 'Planer planen';
 const log = t => DAT.log(t);
@@ -84,19 +86,31 @@ async function phaseB(text) {
 
 async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt) {
   // In der Erinnerungen-App Abgehaktes zuerst übernehmen
-  const ueb = AKT.erledigteUebernehmen(aufgabenAlt, await ERI.erledigteLesen(einst, log));
+  const abgehakt = await ERI.erledigteLesen(einst, log);
+  await SON.erledigtMelden(abgehakt.filter(e => SON.istSonder(e.id)));
+  const ueb = AKT.erledigteUebernehmen(aufgabenAlt, abgehakt.filter(e => !SON.istSonder(e.id)));
   const aufgaben = ueb.aufgaben;
   if (ueb.meldungen.length) {
     await aufgabenSpeichern(aufgaben);
     for (const m of ueb.meldungen) await log(m);
   }
+  // Geburtstage, Fristen, Blumen, Checklisten
+  let extra = { aufgaben: [], mitteilungen: [], checklisten: [] };
+  try {
+    extra = await SON.vorbereiten(einst, jetzt, log);
+  } catch (e) {
+    await log(`FEHLER bei Geburtstagen/Fristen/Blumen: ${e && e.stack ? e.stack : e}`);
+  }
   const termine = await KAL.termineLesen(einst, jetzt);
-  const plan = P.planen({ termine, aufgaben, einst, jetzt, fahrzeit: k => F.cacheWert(cache, k) });
+  const plan = P.planen({ termine, aufgaben: aufgaben.concat(extra.aufgaben), einst, jetzt, fahrzeit: k => F.cacheWert(cache, k) });
   await KAL.planerSchreiben(einst, plan, jetzt, log);
   await ERI.schreiben(einst, plan.bloecke, jetzt, log);
+  const checks = SO.checklistenFuer(plan.ablauf.fahrten, extra.checklisten, jetzt, einst.regeln.ruheVorAbfahrt);
+  if (checks.length) await log(`Checklisten: ${checks.map(c => `${D.kurz(new Date(c.zeit))} ${D.hm(new Date(c.zeit))} ${c.titel}`).join(', ')}`);
   const entfernt = await MIT.alteEntfernen();
   const angekuendigt = await MIT.bloeckeAnkuendigen(plan.bloecke, jetzt);
-  await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} geplant.`);
+  const weitere = await MIT.weitereAnkuendigen(checks.concat(extra.mitteilungen), jetzt, angekuendigt);
+  await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} Aufgaben + ${weitere} weitere (Checklisten, Geburtstage, Fristen) geplant.`);
 
   const vorher = await DAT.lesen('plan.json', {});
   const warnText = plan.warnungen.map(w => `${w.name} (fällig ${D.deutschDatum(w.faellig)})`).join(', ');
@@ -131,8 +145,14 @@ function kurzbefehlStarten(name) {
 
 // Knopf aus Mitteilung
 async function aktion(q) {
+  q = q || {};
+  if (SON.istSonder(q.id)) {
+    await log(`Knopf: ${await SON.aktion(q, new Date())}`);
+    kurzbefehlStarten(KURZBEFEHL);
+    return;
+  }
   const { aufgaben } = await laden();
-  const r = AK.aktionAnwenden(aufgaben, q || {}, new Date());
+  const r = AK.aktionAnwenden(aufgaben, q, new Date());
   await aufgabenSpeichern(r.aufgaben);
   await log(`Knopf: ${r.meldung}`);
   kurzbefehlStarten(KURZBEFEHL); // sofort neu planen
