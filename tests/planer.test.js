@@ -141,3 +141,52 @@ test('Später: nicht vor dem Ende des alten Blocks', () => {
   const plan = P.planen({ termine: [], aufgaben, einst, fahrzeit: () => 15, jetzt: um(DO, 18, 20) });
   assert.strictEqual(zeit(plan.bloecke[0].start), '18:45');
 });
+
+test('Einmalige Aufgabe: ab Fälligkeit, nicht nach "bis", keine Wiederholung', () => {
+  const einst = einstellungen();
+  einst.regeln.vorziehenTage = 0;
+  const aufgaben = [{ id: 'geschenk-x', name: 'Geschenk für X', dauer: 30, pflicht: true, einmalig: true, faellig: '2026-11-14', bis: '2026-11-15' }];
+  const plan = P.planen({ termine: [], aufgaben, einst, fahrzeit: () => 15, jetzt: um(DO, 0) });
+  assert.deepStrictEqual(plan.bloecke.map(b => `${D.ymd(b.start)} ${zeit(b.start)}`), ['2026-11-14 08:00']);
+  // Fälligkeit und Frist voll belegt -> Warnung, nicht danach planen
+  const termine = [vollerTag(D.plusTage(DO, 2)), vollerTag(D.plusTage(DO, 3))];
+  const p2 = P.planen({ termine, aufgaben, einst, fahrzeit: () => 15, jetzt: um(DO, 0) });
+  assert.strictEqual(p2.bloecke.length, 0);
+  assert.deepStrictEqual(p2.warnungen.map(w => w.name), ['Geschenk für X']);
+});
+
+test('Unterwegs: auf dem Heimweg nach der Arbeit, Heimweg verschiebt sich', () => {
+  const einst = einstellungen();
+  const termine = [{ titel: 'Arbeit', start: um(DO, 7), end: um(DO, 16), ort: 'Arbeit' }];
+  for (let i = 1; i < 7; i++) termine.push(vollerTag(D.plusTage(DO, i)));
+  const aufgaben = [
+    { id: 'blumen', name: 'Blumen kaufen', dauer: 20, pflicht: true, einmalig: true, unterwegs: true, faellig: D.ymd(DO), bis: D.ymd(DO) },
+    { id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: D.ymd(D.plusTage(DO, -7)) },
+  ];
+  const plan = P.planen({ termine, aufgaben, einst, fahrzeit: () => 15, jetzt: um(DO, 0) });
+  assert.deepStrictEqual(plan.bloecke.map(b => `${zeit(b.start)}-${zeit(b.end)} ${b.name}${b.unterwegs ? ' (' + b.unterwegs + ')' : ''}`), [
+    '16:00-16:20 Blumen kaufen (heimweg)',
+    '16:50-17:20 Bad putzen', // heim 16:35 + 15 min Pause
+  ]);
+  const heim = plan.ablauf.fahrten.find(f => f.nachArt === 'zuhause');
+  assert.strictEqual(`${zeit(heim.abfahrt)}-${zeit(heim.ankunft)}`, '16:20-16:35');
+});
+
+test('Unterwegs: morgens an freien Tagen, nicht an Arbeitstagen; zu spät -> normale Lücke', () => {
+  const einst = einstellungen();
+  const sa = D.plusTage(DO, 2);
+  const termine = [
+    { titel: 'Arbeit', start: um(DO, 7), end: um(DO, 16), ort: 'Arbeit' },
+    { titel: 'Arbeit', start: um(D.plusTage(DO, 1), 7), end: um(D.plusTage(DO, 1), 13), ort: 'Arbeit' },
+  ];
+  const aufgaben = [{ id: 'blumen', name: 'Blumen kaufen', dauer: 20, pflicht: false, einmalig: true, unterwegs: true, faellig: D.ymd(sa), bis: D.ymd(D.plusTage(sa, 3)) }];
+  const plan = P.planen({ termine, aufgaben, einst, fahrzeit: () => 15, jetzt: um(DO, 0) });
+  assert.deepStrictEqual(plan.bloecke.map(b => `${D.ymd(b.start)} ${zeit(b.start)} ${b.unterwegs}`), [`${D.ymd(sa)} 08:00 morgens`]);
+
+  // Heimweg erst 21:30 (Läden zu) und kein freier Morgen -> normale Lücke
+  const t2 = [{ titel: 'Training', start: um(DO, 20), end: um(DO, 21, 30), ort: 'Halle' }];
+  const morgensBelegt = { titel: 'belegt', start: um(DO, 0), end: um(DO, 10), ort: '' };
+  const a2 = [{ id: 'blumen', name: 'Blumen kaufen', dauer: 20, einmalig: true, unterwegs: true, faellig: D.ymd(DO), bis: D.ymd(DO) }];
+  const p2 = P.planen({ termine: t2.concat(morgensBelegt), aufgaben: a2, einst, fahrzeit: () => 15, jetzt: um(DO, 0) });
+  assert.deepStrictEqual(p2.bloecke.map(b => `${zeit(b.start)} ${b.unterwegs || 'normal'}`), ['10:00 normal']);
+});

@@ -19,6 +19,7 @@ function standardEinstellungen() {
       minLuecke: 20,
       tagStart: '08:00',
       tagEnde: '21:00',
+      unterwegsBis: '19:00', // Besorgungen (z. B. Blumen) nur, solange Läden offen sind
       maxProTag: 90,
       tage: 7,
       weckerVorlauf: 5,
