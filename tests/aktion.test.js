@@ -45,3 +45,26 @@ test('Datumseingabe', () => {
   assert.strictEqual(D.datumEingabe('morgen früh', heute), undefined);
   assert.strictEqual(D.deutschDatum('2026-11-12'), '12.11.2026');
 });
+
+test('Heute nicht: frühestens morgen 00:00', () => {
+  const jetzt = new Date(2026, 10, 12, 20, 40);
+  const r = aktionAnwenden(S.standardAufgaben(), { aktion: 'heutenicht', id: 'waesche' }, jetzt);
+  const w = r.aufgaben.find(a => a.id === 'waesche');
+  assert.strictEqual(w.nichtVor, new Date(2026, 10, 13).toISOString());
+  assert.strictEqual(w.letzte, null);
+});
+
+test('Abgehakte Erinnerungen übernehmen', () => {
+  const { erledigteUebernehmen } = require('../scripts/planer/core/aktion');
+  const vorher = S.standardAufgaben().map(a => a.id === 'bad' ? { ...a, letzte: '2026-11-10', nichtVor: 'x' } : a);
+  const r = erledigteUebernehmen(vorher, [
+    { id: 'bad', datum: '2026-11-12' },
+    { id: 'saugen', datum: '2026-11-12' },
+    { id: 'bad', datum: '2026-11-01' }, // älter: ignorieren
+    { id: 'gibtsnicht', datum: '2026-11-12' },
+  ]);
+  assert.strictEqual(r.aufgaben.find(a => a.id === 'bad').letzte, '2026-11-12');
+  assert.strictEqual(r.aufgaben.find(a => a.id === 'bad').nichtVor, null);
+  assert.strictEqual(r.aufgaben.find(a => a.id === 'saugen').letzte, '2026-11-12');
+  assert.strictEqual(r.meldungen.length, 2);
+});

@@ -10,6 +10,8 @@ function standardEinstellungen() {
       zuhause: { adresse: '', stichwoerter: ['zuhause', 'daheim'] },
       arbeit: { name: 'Arbeit', adresse: '', stichwoerter: ['arbeit'] },
     },
+    // Aufgaben von heute und morgen zum Abhaken in der Erinnerungen-App
+    erinnerungen: { an: true, liste: 'Planer', tage: 2 },
     verkehr: { zuhauseArbeit: 'Fahrrad', direktVonArbeit: 'Fahrrad', sonst: 'Auto' },
     regeln: {
       pauseNachHeim: 15,

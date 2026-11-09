@@ -2,6 +2,7 @@
   "version": "1.0.0",
   "dateien": [
     "planer/adapter/dateien.js",
+    "planer/adapter/erinnerungen.js",
     "planer/adapter/kalender.js",
     "planer/adapter/menue.js",
     "planer/adapter/mitteilungen.js",

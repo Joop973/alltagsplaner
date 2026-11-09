@@ -29,6 +29,14 @@ function umgebung({ jetzt, nurRelativ }) {
     async save() { if (!termine.includes(this)) termine.push(this); }
     remove() { const i = termine.indexOf(this); if (i >= 0) termine.splice(i, 1); }
   }
+  const erinnerungsListen = [];
+  const erinnerungen = [];
+  class Reminder {
+    constructor() { this.notes = ''; this.isCompleted = false; this.completionDate = null; }
+    static async all(cals) { const n = new Set(cals.map(c => c.title)); return erinnerungen.filter(r => n.has(r.calendar.title)); }
+    async save() { if (!erinnerungen.includes(this)) erinnerungen.push(this); }
+    remove() { const i = erinnerungen.indexOf(this); if (i >= 0) erinnerungen.splice(i, 1); }
+  }
   class Notification {
     constructor() { this.actions = []; }
     static async allPending() { return mitteilungen.slice(); }
@@ -59,7 +67,12 @@ function umgebung({ jetzt, nurRelativ }) {
   const ctx = {
     console: { log() {} },
     Date: TestDate,
-    Calendar: { forEvents: async () => kalender },
+    Calendar: {
+      forEvents: async () => kalender,
+      forReminders: async () => erinnerungsListen,
+      createForReminders: async title => { const l = { title }; erinnerungsListen.push(l); return l; },
+    },
+    Reminder,
     CalendarEvent,
     Notification,
     FileManager: { iCloud: () => dateimanager, local: () => dateimanager },
@@ -121,7 +134,7 @@ function umgebung({ jetzt, nurRelativ }) {
   }
 
   const daten = n => path.join(wurzel, 'planer-daten', n);
-  return { wurzel, script, termin, termine, mitteilungen, geoeffnet, daten, setJetzt: d => { jetzt = d; } };
+  return { wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, setJetzt: d => { jetzt = d; } };
 }
 
 for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase b, Knopf Erledigt (Pfade ${nurRelativ ? 'relativ' : 'vom Hauptordner'})`, async () => {
@@ -183,6 +196,10 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.strictEqual(u.mitteilungen.length, 2);
   assert.ok(u.mitteilungen[0].actions[0].url.startsWith('scriptable:///run/Planer%20Aktion?aktion=erledigt&id=bad'));
 
+  // Erinnerungen zum Abhaken (heute + morgen)
+  assert.deepStrictEqual(u.erinnerungen.map(r => r.title), ['Bad putzen · Do 12.11. 18:15', 'Staubsaugen · Do 12.11. 18:45']);
+  assert.strictEqual(u.mitteilungen[0].actions.map(a => a.titel).join(','), 'Erledigt,Später,Heute nicht');
+
   // Nochmal planen: keine doppelten Einträge
   await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.strictEqual(u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe')).length, 2);
@@ -196,8 +213,24 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.strictEqual(aufgaben.find(x => x.id === 'bad').letzte, '2026-11-12');
   assert.deepStrictEqual(u.geoeffnet, ['shortcuts://run-shortcut?name=Planer%20planen']);
 
+  // In der Erinnerungen-App "Staubsaugen" abhaken, dann neu planen
+  const saugen = u.erinnerungen.find(r => r.title.startsWith('Staubsaugen'));
+  saugen.isCompleted = true;
+  saugen.completionDate = um(18, 25);
+  const a3 = await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: ['RAD', ...Array.from(a3.rad, () => '15 Min.'), 'AUTO', ...Array.from(a3.auto, () => '15 Min.')].join('\n') });
+  const nachher = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
+  assert.strictEqual(nachher.find(x => x.id === 'saugen').letzte, '2026-11-12');
+  assert.ok(!u.erinnerungen.some(r => r.isCompleted), 'abgehakte werden nach dem Einlesen entfernt');
+
+  // "Heute nicht" per Mitteilungs-Knopf
+  await u.script('Planer Aktion.js', { queryParameters: { aktion: 'heutenicht', id: 'saugen' } });
+  const zuletzt = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
+  assert.strictEqual(zuletzt.find(x => x.id === 'saugen').nichtVor, new Date(2026, 10, 13).toISOString());
+
   const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
   assert.ok(!log.includes('FEHLER'), log);
+  assert.match(log, /Abgehakt: Staubsaugen/);
 });
 
 test('Fehler (nicht eingerichtet) landet im Log und in der Ausgabe', async () => {

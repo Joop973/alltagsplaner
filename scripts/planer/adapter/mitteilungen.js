@@ -25,11 +25,12 @@ async function bloeckeAnkuendigen(bloecke, jetzt) {
     m.identifier = `${PRAEFIX}${b.aufgabeId}-${start.getTime()}`;
     m.threadIdentifier = 'planer';
     m.title = `Jetzt: ${b.name}`;
-    m.body = `${Math.round((new Date(b.end) - start) / 60000)} min – Erledigt oder Später?`;
+    m.body = `${Math.round((new Date(b.end) - start) / 60000)} min – Erledigt, Später oder Heute nicht?`;
     m.sound = 'default';
     m.setTriggerDate(start);
     m.addAction('Erledigt', aktionsUrl('erledigt', b));
     m.addAction('Später', aktionsUrl('spaeter', b));
+    m.addAction('Heute nicht', aktionsUrl('heutenicht', b));
     await m.schedule();
     n++;
   }

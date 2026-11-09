@@ -176,7 +176,8 @@ async function tagesplan() {
   const plan = await DAT.lesen('plan.json', null);
   if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
   const eintraege = [];
-  for (const b of plan.bloecke) eintraege.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}`, fett: true });
+  let gewaehlt = null;
+  for (const b of plan.bloecke) eintraege.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}`, fett: true, block: b });
   for (const f of plan.fahrten) {
     if (new Date(f.ankunft) < new Date()) continue;
     const ziel = f.nachArt === 'zuhause' ? 'nach Hause' : `zu ${f.zielName}`;
@@ -188,7 +189,7 @@ async function tagesplan() {
   t.showSeparators = true;
   const kopf = new UITableRow();
   kopf.isHeader = true;
-  kopf.addText('Tagesplan', `geplant ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))}`);
+  kopf.addText('Tagesplan', `geplant ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))} · Aufgabe antippen zum Abhaken`);
   t.addRow(kopf);
   if (plan.warnText) {
     const w = new UITableRow();
@@ -214,6 +215,10 @@ async function tagesplan() {
     }
     const r = new UITableRow();
     const c = r.addText(e.text);
+    if (e.block) {
+      r.onSelect = () => { gewaehlt = e.block; };
+      r.dismissOnSelect = true;
+    }
     if (e.fett) c.titleFont = Font.boldSystemFont(16);
     else c.titleFont = Font.systemFont(14);
     t.addRow(r);
@@ -224,6 +229,13 @@ async function tagesplan() {
     t.addRow(r);
   }
   await t.present();
+  if (!gewaehlt) return false;
+  const b = gewaehlt;
+  const i = await auswahl(b.name, `${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}\nDanach wird sofort neu geplant.`,
+    ['Erledigt', 'Heute nicht (ab morgen neu einplanen)', 'Später (nächste Lücke)']);
+  if (i === -1) return false;
+  await PLAN.aktion({ aktion: ['erledigt', 'heutenicht', 'spaeter'][i], id: b.aufgabeId, ende: b.end });
+  return true; // Kurzbefehl wurde gestartet, App wird verlassen
 }
 
 // ---------- Aufgaben ----------
@@ -394,6 +406,7 @@ async function einstellungenMenue() {
       `Weitere freie Tage: ${(sch.extraFrei || []).join(', ') || 'keine'}`,
       'Kalender beachten / ignorieren',
       `Fahrten im Kalender "Planer": ${einst.kalender.fahrtenEintragen ? 'an' : 'aus'}`,
+      `Aufgaben in Erinnerungen-App (Liste "${einst.erinnerungen.liste}"): ${einst.erinnerungen.an ? 'an' : 'aus'}`,
     ]);
     if (i === -1) return;
     if (i === 0) await regelnMenue(einst);
@@ -407,6 +420,7 @@ async function einstellungenMenue() {
     }
     if (i === 6) await kalenderMenue(einst);
     if (i === 7) { einst.kalender.fahrtenEintragen = !einst.kalender.fahrtenEintragen; await PLAN.einstellungenSpeichern(einst); }
+    if (i === 8) { einst.erinnerungen.an = !einst.erinnerungen.an; await PLAN.einstellungenSpeichern(einst); }
   }
 }
 
@@ -487,8 +501,8 @@ async function hauptmenue() {
     const i = await auswahl('Planer', status, punkte.map(p => p[0]), 'Schließen');
     if (i === -1) return;
     try {
-      await punkte[i][1]();
-      if (i === 0 || i === punkte.length - 1) return; // App wird verlassen
+      const verlassen = await punkte[i][1]();
+      if (verlassen === true || i === 0 || i === punkte.length - 1) return; // App wird verlassen
     } catch (e) {
       await DAT.log(`FEHLER im Menü: ${e && e.stack ? e.stack : e}`);
       await info('Fehler', String(e && e.message ? e.message : e));

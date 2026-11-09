@@ -14,6 +14,8 @@ const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
 const ORT = hole('adapter/orte');
+const ERI = hole('adapter/erinnerungen');
+const AKT = hole('core/aktion');
 
 const KURZBEFEHL = 'Planer planen';
 const log = t => DAT.log(t);
@@ -75,10 +77,18 @@ async function phaseB(text) {
   return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length };
 }
 
-async function planenUndSchreiben(einst, aufgaben, cache, jetzt) {
+async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt) {
+  // In der Erinnerungen-App Abgehaktes zuerst übernehmen
+  const ueb = AKT.erledigteUebernehmen(aufgabenAlt, await ERI.erledigteLesen(einst, log));
+  const aufgaben = ueb.aufgaben;
+  if (ueb.meldungen.length) {
+    await aufgabenSpeichern(aufgaben);
+    for (const m of ueb.meldungen) await log(m);
+  }
   const termine = await KAL.termineLesen(einst, jetzt);
   const plan = P.planen({ termine, aufgaben, einst, jetzt, fahrzeit: k => F.cacheWert(cache, k) });
   await KAL.planerSchreiben(einst, plan, jetzt, log);
+  await ERI.schreiben(einst, plan.bloecke, jetzt, log);
   const entfernt = await MIT.alteEntfernen();
   const angekuendigt = await MIT.bloeckeAnkuendigen(plan.bloecke, jetzt);
   await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} geplant.`);
