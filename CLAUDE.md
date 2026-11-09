@@ -114,3 +114,5 @@ Orte lernen, Dienstplan-PDF-Import, Spracheingabe.
 - Aufgaben nur, wenn zuhause; freie Tage/Urlaub: 08:00–21:00 frei.
 - Erledigt/Später: sofort neu planen (Kurzbefehl "Planer planen" wird gestartet). Später = nicht vor Ende des alten Blocks, mindestens 30 min.
 - Wecker auch für den Weg zur Arbeit. Kein Wecker für Heimfahrten.
+- Wecker-Aktionen auf dem iPhone (iOS 27): "Suche Wecker", "Wecker löschen" (vorhanden -> löschen statt ausschalten), "Wecker ein/aus", "Neuer Wecker".
+- Scriptable-Aktion "Script ausführen": kurzes Antippen von "Parameter" öffnet Dateien; Variablen per langem Drücken -> "Variable auswählen". Phase a braucht keinen Parameter.

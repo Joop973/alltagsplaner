@@ -6,6 +6,8 @@ Die Scriptable-Aktion heißt je nach Sprache **Script ausführen** oder **Run Sc
 
 Wichtig bei der Scriptable-Aktion: auf den Pfeil **>** tippen und **Bei Ausführung anzeigen / Show When Run** ausschalten.
 
+Wecker-Aktionen auf iOS 27: **Suche Wecker**, **Wecker löschen**, **Wecker ein/aus**, **Neuer Wecker**.
+
 Wenn ein Name hier nicht genau so heißt wie bei dir: Nimm die Aktion, die am ähnlichsten klingt, und schreib mir den Namen. Ich passe die Anleitung an.
 
 ---
@@ -31,18 +33,14 @@ Name exakt: **Planer planen** (wird von der App so aufgerufen).
 
 ### Teil A: Alte Planer-Wecker entfernen
 
-Probiere zuerst **Variante 1**. Wenn es die Aktion "Wecker löschen" nicht gibt, nimm **Variante 2**.
+1. Aktion **Suche Wecker**. In der Aktion **Filter hinzufügen** antippen → Feld **Beschriftung** (oder "Name") → **beginnt mit** → `Planer:`.
+2. Aktion **Wecker löschen**. Wecker: **Wecker** (Ergebnis von Schritt 1).
+   Fragt die Aktion bei jedem Lauf nach Bestätigung: auf den Pfeil **>** tippen und **Vor dem Ausführen bestätigen** (o. ä.) ausschalten, falls es das gibt.
+3. Schritte 3–5 entfallen.
 
-**Variante 1 (löschen):**
-1. Aktion **Alle Wecker abrufen**.
-2. Aktion **Wiederholen mit jedem Objekt** in **Wecker** (Ergebnis von Schritt 1).
-3. Darin: Aktion **Wenn**. Bedingung: **Wiederholungsobjekt** → antippen → **Name** (bzw. "Beschriftung") → **beginnt mit** → `Planer:`.
-4. Darin (im "Wenn"-Teil): Aktion **Wecker löschen** → Wecker: **Wiederholungsobjekt**.
-5. Den Teil "Sonst" leer lassen.
+Falls "Suche Wecker" keinen Filter anbietet: **Suche Wecker** ohne Filter → **Wiederholen mit jedem Objekt** in **Wecker** → darin **Wenn** **Wiederholungsobjekt** → **Beschriftung** → **beginnt mit** `Planer:` → im "Wenn"-Teil **Wecker löschen** mit **Wiederholungsobjekt**.
 
-**Variante 2 (ausschalten):**
-Wie Variante 1, aber in Schritt 4 die Aktion **Wecker ein-/ausschalten** (auch: "Wecker umschalten") → Wecker: **Wiederholungsobjekt** → **Aus**.
-Nachteil: Die ausgeschalteten Planer-Wecker sammeln sich in der Uhr-App. Ab und zu von Hand löschen.
+Falls "Wecker löschen" nicht geht: statt dessen **Wecker ein/aus** → **Aus**. Dann sammeln sich ausgeschaltete Planer-Wecker in der Uhr-App.
 
 ### Teil B: Strecken holen (Phase a)
 
@@ -75,7 +73,8 @@ Nachteil: Die ausgeschalteten Planer-Wecker sammeln sich in der Uhr-App. Ab und 
 22. Aktion **Wiederholen mit jedem Objekt** in diesem Wörterbuchwert.
 23. Darin: **Wörterbuchwert abrufen** `zeit` aus **Wiederholungsobjekt**, umbenennen in `zeit`.
 24. Darin: **Wörterbuchwert abrufen** `name` aus **Wiederholungsobjekt**, umbenennen in `name`.
-25. Darin: Aktion **Wecker erstellen**. Uhrzeit: Variable **zeit**. Beschriftung: Variable **name**.
+25. Darin: Aktion **Neuer Wecker**. Uhrzeit: Variable **zeit**. Beschriftung: Variable **name**.
+    Variable einsetzen: Finger länger auf das Feld halten → **Variable auswählen**.
     Nimmt das Uhrzeit-Feld keine Variable an: vorher **Datumsangaben aus Eingabe abrufen** mit **zeit** einfügen und dessen Ergebnis nehmen.
 26. Ende der Wiederholung. Fertig.
 
