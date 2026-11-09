@@ -89,3 +89,15 @@ test('Adresse aus Kartenergebnis', () => {
   assert.strictEqual(O.adresseAusOrt(undefined), null);
   assert.strictEqual(O.adresseAusOrt({}), null);
 });
+
+test('Suchvarianten für unordentliche Ort-Texte', () => {
+  assert.deepStrictEqual(O.suchVarianten('Nordort, XY  (123456): Am Platz/Neuer Weg, 12345 Musterstadt (OT Nord)'), [
+    'Nordort, XY (123456): Am Platz/Neuer Weg, 12345 Musterstadt (OT Nord)',
+    'Am Platz/Neuer Weg, 12345 Musterstadt',
+    'Am Platz, 12345 Musterstadt',
+    '12345 Musterstadt',
+  ]);
+  assert.deepStrictEqual(O.suchVarianten('Teststraße 1, 11111 Teststadt'), ['Teststraße 1, 11111 Teststadt', '11111 Teststadt']);
+  assert.deepStrictEqual(O.suchVarianten('Sporthalle'), ['Sporthalle']);
+  assert.deepStrictEqual(O.suchVarianten(''), []);
+});

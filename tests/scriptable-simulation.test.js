@@ -134,7 +134,7 @@ function umgebung({ jetzt, nurRelativ }) {
   }
 
   const daten = n => path.join(wurzel, 'planer-daten', n);
-  return { wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, setJetzt: d => { jetzt = d; } };
+  return { ctx, wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, setJetzt: d => { jetzt = d; } };
 }
 
 for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase b, Knopf Erledigt (Pfade ${nurRelativ ? 'relativ' : 'vom Hauptordner'})`, async () => {
@@ -259,6 +259,64 @@ test('Menü-Modul lädt ohne Fehler', async () => {
   const u = umgebung({ jetzt: new Date(2026, 10, 12, 9) });
   fs.writeFileSync(path.join(u.wurzel, 'laden.js'), "const M = importModule('planer/adapter/menue'); Script.setShortcutOutput(Object.keys(M).join(','));");
   assert.strictEqual(await u.script('laden.js'), 'hauptmenue,ersteinrichtung');
+});
+
+test('Orte: Varianten, Fehler nicht merken, Standort während des Termins lernen', async () => {
+  const um = (h, m = 0) => new Date(2026, 10, 12, h, m);
+  const u = umgebung({ jetzt: um(17, 20) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), '[]');
+  const gesucht = [];
+  let kaputt = true;
+  u.ctx.Location = {
+    // ganzer Text wirft einen Fehler, die bereinigte Variante wird gefunden; "Halle" nie
+    geocode: async text => {
+      gesucht.push(text);
+      if (kaputt && text.includes('(')) throw new Error('geocode kaputt');
+      if (/Halle/.test(text)) return [];
+      return [{ thoroughfare: 'Gefunden', subThoroughfare: '1', postalCode: '22222', locality: 'Ort' }];
+    },
+    setAccuracyToHundredMeters() {},
+    current: async () => ({ latitude: 52, longitude: 7 }),
+    reverseGeocode: async () => [{ thoroughfare: 'Hallenweg', subThoroughfare: '5', postalCode: '33333', locality: 'Sportstadt' }],
+  };
+  u.termin('Privat', 'Termin', um(19), um(20), 'Nordort, XY (1234): Am Platz/Neuer Weg, 12345 Musterstadt (OT Nord)');
+  u.termin('Privat', 'Training', um(17), um(18), 'Halle');
+
+  const a = await u.script('Planer Planen.js', {});
+  assert.ok(!a.fehler, a.fehler);
+  const orte = JSON.parse(fs.readFileSync(u.daten('orte.json'), 'utf8'));
+  // Variante ohne Klammern gefunden
+  assert.strictEqual(orte.eintraege[Object.keys(orte.eintraege).find(k => k.startsWith('nordort'))].adresse, 'Gefunden 1, 22222 Ort');
+  // "Halle" läuft gerade (17:20) und ist unbekannt -> Standort gelernt
+  assert.strictEqual(orte.eintraege.halle.adresse, 'Hallenweg 5, 33333 Sportstadt');
+  assert.strictEqual(orte.eintraege.halle.quelle, 'standort');
+  assert.deepStrictEqual(Object.keys(orte.offen), []);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.match(log, /Ort gelernt \(du warst gerade dort\): "Halle"/);
+});
+
+test('Orte: nicht gefundene werden beim nächsten Lauf neu gesucht', async () => {
+  const u = umgebung({ jetzt: new Date(2026, 10, 12, 9) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), '[]');
+  let geht = false;
+  u.ctx.Location = { geocode: async () => { if (!geht) throw new Error('aus'); return [{ name: 'Kino', locality: 'Teststadt' }]; } };
+  u.termin('Privat', 'Kino', new Date(2026, 10, 12, 19), new Date(2026, 10, 12, 21), 'Kino am Markt');
+  let a = await u.script('Planer Planen.js', {});
+  assert.strictEqual(a.anzahl, 0);
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "Kino am Markt" \(aus\)/);
+  geht = true;
+  a = await u.script('Planer Planen.js', {});
+  assert.ok(a.anzahl > 0, 'beim zweiten Mal gefunden');
 });
 
 test('Manifest enthält alle Scripts', () => {

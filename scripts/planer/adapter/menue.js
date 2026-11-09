@@ -11,6 +11,7 @@ const SCH = hole('core/schichten');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const PLAN = hole('adapter/planung');
+const ORT = hole('adapter/orte');
 
 // ---------- kleine Dialog-Helfer ----------
 
@@ -446,6 +447,45 @@ async function ausnahmenMenue() {
   }
 }
 
+// ---------- Orte ----------
+
+const QUELLE = { suche: 'gefunden', hand: 'von dir', standort: 'Standort', ignoriert: 'ignoriert (Ersatzzeit)' };
+
+async function orteMenue() {
+  const n = await ORT.offeneNachsuchen(t => DAT.log(t));
+  if (n) await info('Orte gefunden', `${n} Ort(e) wurden jetzt gefunden.`);
+  for (;;) {
+    const d = await ORT.laden();
+    const offen = Object.values(d.offen);
+    const bekannt = Object.values(d.eintraege).sort((a, b) => String(a.text).localeCompare(String(b.text)));
+    const zeilen = [
+      ...offen.map(o => `FEHLT: ${o.text}`),
+      ...bekannt.map(e => `${e.text} → ${e.adresse || '–'} (${QUELLE[e.quelle] || e.quelle})`),
+    ];
+    if (!zeilen.length) { await info('Orte', 'Noch keine Orte gelernt.'); return; }
+    const i = await auswahl('Orte', offen.length ? `FEHLT = nicht gefunden (${offen.length}). Antippen zum Eintragen.` : 'Alle Orte bekannt.', zeilen);
+    if (i === -1) return;
+    const text = i < offen.length ? offen[i].text : bekannt[i - offen.length].text;
+    const w = await auswahl(text, '', ['Adresse eintippen', 'Ich bin gerade dort (Standort nehmen)', 'Ignorieren (immer Ersatz-Fahrzeit)', 'Vergessen']);
+    if (w === 0) {
+      const a = await eingabe('Adresse', `Für "${text}"`, '', 'Straße Nr, PLZ Ort');
+      if (!a) continue;
+      const r = await ORT.suchenMitVarianten(a);
+      if (!r.adresse && !(await frage('Nicht gefunden', `Die Karten-Suche findet "${a}" nicht (${r.fehler}). Trotzdem speichern?`))) continue;
+      await ORT.setzen(text, r.adresse || a, 'hand');
+    }
+    if (w === 1) {
+      try {
+        const a = await standortAdresse();
+        await ORT.setzen(text, a, 'standort');
+        await info('Gespeichert', a);
+      } catch (e) { await info('Standort nicht verfügbar', String(e)); }
+    }
+    if (w === 2) await ORT.setzen(text, null, 'ignoriert');
+    if (w === 3) await ORT.vergessen(text);
+  }
+}
+
 // ---------- Log ----------
 
 async function logZeigen() {
@@ -488,6 +528,7 @@ async function hauptmenue() {
       ['Tagesplan', tagesplan],
       ['Aufgaben bearbeiten', aufgabenMenue],
       ['Urlaub / Ausnahmen', ausnahmenMenue],
+      ['Gelernte Orte', orteMenue],
       ['Einstellungen', einstellungenMenue],
       ['Log', logZeigen],
       ['Ersteinrichtung', ersteinrichtung],

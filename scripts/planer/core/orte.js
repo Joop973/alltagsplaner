@@ -54,4 +54,22 @@ function adresseAusOrt(o) {
   return loc && typeof loc.latitude === 'number' ? `${loc.latitude},${loc.longitude}` : null;
 }
 
-module.exports = { adresseAusOrt, norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };
+// Ort-Text -> Suchvarianten, von genau bis grob. Beispiel:
+// "Nordort, XY (123456): Am Platz/Neuer Weg, 12345 Musterstadt (OT Nord)"
+// -> [ganzer Text, "Am Platz/Neuer Weg, 12345 Musterstadt", "Am Platz, 12345 Musterstadt", "12345 Musterstadt"]
+function suchVarianten(text) {
+  const ganz = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!ganz) return [];
+  const v = [ganz];
+  let c = ganz.replace(/\([^)]*\)/g, ' ');
+  if (c.includes(':')) c = c.slice(c.lastIndexOf(':') + 1);
+  c = c.replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '');
+  if (c) v.push(c);
+  const ohneSchraeg = c.replace(/\/[^,]*/g, '').replace(/\s+,/g, ',').trim();
+  if (ohneSchraeg) v.push(ohneSchraeg);
+  const plz = ganz.match(/\b(\d{5})\s+([^,()\n]+)/);
+  if (plz) v.push(`${plz[1]} ${plz[2].trim()}`);
+  return [...new Set(v)];
+}
+
+module.exports = { suchVarianten, adresseAusOrt, norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };

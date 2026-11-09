@@ -46,9 +46,14 @@ async function phaseA() {
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
   const fehlen = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
-  const { gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute);
+  let { gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute, log);
+  // Nicht gefunden, aber der Termin läuft gerade? Dann bin ich dort: Standort lernen und neu prüfen.
+  if (schlecht.length && await ORT.standortLernen(termine, jetzt, log)) {
+    ({ gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute, log));
+  }
   for (const x of schlecht) {
-    await log(`WARNUNG Ort nicht gefunden: "${x.ort}" – nehme ${einst.regeln.fallbackMin} min. Tipp: im Termin die genaue Adresse eintragen.`);
+    if (x.ignoriert) continue;
+    await log(`WARNUNG Ort nicht gefunden: "${x.ort}" (${x.fehler}) – nehme ${einst.regeln.fallbackMin} min. In "Planer" → "Gelernte Orte" kannst du die Adresse eintragen.`);
   }
   const { ausgabe, offen } = F.streckenAufteilen(noetig);
   await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), ...offen });
