@@ -6,7 +6,7 @@ Die Scriptable-Aktion heißt je nach Sprache **Script ausführen** oder **Run Sc
 
 Wichtig bei der Scriptable-Aktion: auf den Pfeil **>** tippen und **Bei Ausführung anzeigen / Show When Run** ausschalten.
 
-Wecker-Aktionen auf iOS 27: **Suche Wecker**, **Wecker löschen**, **Wecker ein/aus**, **Neuer Wecker**.
+Namen auf iOS 27: **Suche Wecker**, **Wecker löschen**, **Wecker ein/aus**, **Neuer Wecker**. "Reisezeit abrufen" heißt **Wegzeit abrufen** (Verkehrsmittel **Radfahren** / **Auto**). Das Ergebnis von "Script ausführen" heißt **Output**.
 
 Wenn ein Name hier nicht genau so heißt wie bei dir: Nimm die Aktion, die am ähnlichsten klingt, und schreib mir den Namen. Ich passe die Anleitung an.
 
@@ -96,8 +96,8 @@ Kein "Wenn", keine eigenen Variablen, kein "Zur Variablen hinzufügen" nötig.
    Es erscheinen zwei Zeilen: "Wiederholen mit jedem Objekt in …" und "Wiederholung beenden".
 6. Aktion **Wörterbuchwert abrufen**, **zwischen** die beiden Zeilen ziehen. Schlüssel: `von`. Wörterbuch: **Wiederholungsobjekt**.
 7. Aktion **Wörterbuchwert abrufen**, unter Schritt 6 ziehen (noch in der Wiederholung). Schlüssel: `nach`. Wörterbuch: **Wiederholungsobjekt**.
-8. Aktion **Reisezeit abrufen**, unter Schritt 7 ziehen (noch in der Wiederholung).
-   - Verkehrsmittel antippen → **Fahrrad**.
+8. Aktion **Wegzeit abrufen** (früher "Reisezeit abrufen"), unter Schritt 7 ziehen (noch in der Wiederholung).
+   - Verkehrsmittel antippen → **Radfahren**.
    - Start (steht meist "Aktueller Standort"): lange drücken → Variable auswählen → Aktion aus **Schritt 6** ("Wert für von") antippen.
    - Ziel: lange drücken → Variable auswählen → Aktion aus **Schritt 7** ("Wert für nach") antippen.
    Danach folgt "Wiederholung beenden".
@@ -131,6 +131,8 @@ Kein "Wenn", keine eigenen Variablen, kein "Zur Variablen hinzufügen" nötig.
 Fertig. Ganz unten steht "Wiederholung beenden".
 
 ### Prüfen, bevor du testest
+
+- Fehler **"Wegzeit abrufen benötigt einen Zielort"**: Fast immer steht in Schritt 6/7 (bzw. 11/12) bei "in" **Wörterbuchwert** statt **Wiederholungsobjekt**. Dann sucht die Aktion "von"/"nach" in der ganzen Liste und findet nichts.
 
 - Zwischen den beiden Script-Aktionen gibt es **keine** "Wenn"-Aktion.
 - Jede "Wörterbuchwert abrufen" hat **einen** Schlüssel.
