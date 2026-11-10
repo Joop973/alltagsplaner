@@ -23,6 +23,16 @@ function standardEinstellungen() {
       weg: ['reise', 'verreist', 'abwesend'],
     },
     wachhund: { an: true, zeit: '07:30', laufBis: '06:30' },
+    // Aufstehwecker: 60 min vor der ersten Abfahrt, nur wenn die vor 10:00 ist
+    aufstehen: { an: true, vorlauf: 60, nurVor: '10:00', schlafStunden: 8 },
+    // Tagesabschluss: offene Aufgaben, Aufstehen und Bettzeit für morgen
+    abschluss: { an: true, zeit: '20:30' },
+    // Morgen-Überblick zur Aufstehzeit (an freien Tagen zum Aufgabenbeginn)
+    morgen: { an: true },
+    // Regen zur Abfahrt ab dieser Wahrscheinlichkeit: Auto statt Rad (Wetter: Open-Meteo, Lage auf ca. 1 km gerundet)
+    regen: { an: true, schwelle: 60 },
+    // Hinweis am Ende eines Aufgabenblocks (Option)
+    blockEnde: { an: false },
     // Einkaufsliste = Erinnerungen-Liste "Einkauf": Einkaufen wird als Besorgung geplant,
     // sobald 5 Sachen draufstehen, etwas 3 Tage wartet oder ein Eintrag mit "!" beginnt.
     einkauf: { an: true, liste: 'Einkauf', abAnzahl: 5, abTagen: 3, dauer: 30 },

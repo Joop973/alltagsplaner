@@ -22,6 +22,7 @@
     "planer/core/sonder.js",
     "planer/core/standard.js",
     "planer/core/tage.js",
+    "planer/core/tagesrhythmus.js",
     "Planer Aktion.js",
     "Planer Planen.js",
     "Planer Update.js",

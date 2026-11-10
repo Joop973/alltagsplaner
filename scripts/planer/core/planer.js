@@ -394,9 +394,9 @@ function vorschlaege({ aufgaben, minuten, jetzt, regeln }) {
 
 // Alles zusammen.
 // sperrTage: Set "YYYY-MM-DD" ohne Aufgaben (krank, verreist, "heute keine Aufgaben")
-function planen({ termine, aufgaben, einst, fahrzeit, jetzt, sperrTage, fest, vorher }) {
+function planen({ termine, aufgaben, einst, fahrzeit, jetzt, sperrTage, fest, vorher, regen }) {
   const regeln = einst.regeln, ruhe = einst.ruhezeiten;
-  const ablauf0 = A.berechneAblauf(termine, { einst, fahrzeit });
+  const ablauf0 = A.berechneAblauf(termine, { einst, fahrzeit, regen });
   const tagInfo = tagInfoBauen({ termine: ablauf0.termine, jetzt, regeln, sperrTage });
   const festIds = new Set((fest || []).map(f => f.aufgabeId));
   const istUnterwegs = a => a.unterwegs && !festIds.has(a.id);

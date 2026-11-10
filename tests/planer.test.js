@@ -82,7 +82,9 @@ test('Direkt weiter, wenn die Zeit für den Heimweg nicht reicht', () => {
   const f = plan.ablauf.fahrten.map(x => `${zeit(x.abfahrt)} ${x.modus} ${x.zielName}`);
   assert.deepStrictEqual(f, ['07:45 Fahrrad Arbeit', '16:05 Fahrrad Arzt', '17:00 Auto Zuhause']);
   // Phase (a) muss alle möglichen Strecken abfragen: hin, heim, Arzt hin, direkt, Arzt heim
-  assert.strictEqual(plan.ablauf.strecken.length, 5);
+  // plus für jede Rad-Strecke die Auto-Strecke (für Regentage): 5 + 3
+  assert.strictEqual(plan.ablauf.strecken.length, 8);
+  assert.strictEqual(plan.ablauf.strecken.filter(x => x.modus === 'Fahrrad').length, 3);
 });
 
 test('Unbekannte Fahrzeit nutzt Fallback 20 min und meldet die Strecke', () => {
