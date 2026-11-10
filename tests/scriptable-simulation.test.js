@@ -459,6 +459,57 @@ test('Stufe 1: Krank, verschobener Block, Einkauf, Medikament, Folgeaufgabe, Wac
   assert.ok(!log.includes('FEHLER'), log);
 });
 
+test('Menüs: einmal durch alle Bildschirme klicken (keine Laufzeitfehler)', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+    schichten: { referenzMontag: '2026-11-09', referenzTyp: 'A' },
+  }));
+  u.termin('Privat', 'Training', um(12, 20), um(12, 21, 30), 'Sporthalle Teststadt');
+  await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  fs.writeFileSync(u.daten('medikamente.json'), JSON.stringify([{ id: 'm1', name: 'Tablette', zeiten: ['20:00'], vorrat: 20 }]));
+
+  // Antworten der Reihe nach; leer = "Zurück" (-1). Tabellen werden nur angezeigt.
+  const antworten = [
+    0,              // Hauptmenü: Heute (Tabelle)
+    1,              // Woche (Tabelle)
+    3, -1,          // Aufgaben -> zurück
+    3, 0, -1, -1,   // Aufgaben -> erste Aufgabe -> zurück -> zurück
+    4, 0, -1, 1, 0, -1, -1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, -1, // Extras: jede Unterseite einmal
+    5, 0, -1, 1, -1, 2, -1, 3, -1, 5, -1, 7, -1, 8, -1, 10, -1, 11, -1, -1, // Einstellungen: Unterseiten
+    6,              // Log (Tabelle)
+    -1,             // Schließen
+  ];
+  const gezeigt = [];
+  class Alert {
+    constructor() { this.aktionen = []; this.felder = []; }
+    addAction(t) { this.aktionen.push(t); } addCancelAction() {} addDestructiveAction(t) { this.aktionen.push(t); }
+    addTextField(p, w) { this.felder.push(w || ''); return { setNumberPadKeyboard() {}, setDecimalPadKeyboard() {} }; }
+    textFieldValue(i) { return this.felder[i]; }
+    async presentSheet() { gezeigt.push(this.title); return antworten.length ? antworten.shift() : -1; }
+    async presentAlert() { gezeigt.push(this.title); return antworten.length ? antworten.shift() : -1; }
+  }
+  class UITable { constructor() { this.rows = []; } addRow(r) { this.rows.push(r); } async present() { gezeigt.push(`Tabelle ${this.rows.length}`); } }
+  class UITableRow { addText(a, b) { this.texte = [a, b]; return { titleFont: null, titleColor: null, subtitleFont: null }; } }
+  Object.assign(u.ctx, {
+    Alert, UITable, UITableRow,
+    Color: Object.assign(function Color() {}, { red: () => 'rot', blue: () => 'blau', gray: () => 'grau' }),
+    Font: { boldSystemFont: () => 'f', systemFont: () => 'f' },
+  });
+  await u.script('Planer.js', {});
+  assert.deepStrictEqual(antworten, [], `nicht alle Antworten verbraucht; gezeigt: ${gezeigt.join(' > ')}`);
+  for (const t of ['Planer', 'Aufgaben', 'Extras', 'Einkaufsliste', 'Medikamente', 'Tablette', 'Geburtstage', 'Fristen', 'Checklisten', 'Blumen', 'Müllabfuhr (Option)', 'Einstellungen', 'Zeiten und Regeln', 'Urlaub / krank / abwesend', 'Einzelne Schicht ändern']) {
+    assert.ok(gezeigt.includes(t), `${t} fehlt: ${gezeigt.join(' > ')}`);
+  }
+  assert.ok(gezeigt.filter(x => String(x).startsWith('Tabelle')).length >= 3);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
+});
+
 test('Manifest enthält alle Scripts', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   const alle = [];

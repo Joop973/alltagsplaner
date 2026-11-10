@@ -14,6 +14,8 @@ const PLAN = hole('adapter/planung');
 const ORT = hole('adapter/orte');
 const SON = hole('adapter/sonder');
 const SO = hole('core/sonder');
+const AL = hole('core/alltag');
+const ERI = hole('adapter/erinnerungen');
 
 // ---------- kleine Dialog-Helfer ----------
 
@@ -170,82 +172,175 @@ async function ersteinrichtung() {
   if (!(await kalenderPruefen(einst))) return;
   if (await frage('Fertig', 'Jetzt zum ersten Mal planen? (startet den Kurzbefehl "Planer planen")', 'Jetzt planen', 'Später')) {
     PLAN.kurzbefehlStarten();
+    return true;
   }
 }
 
-// ---------- Tagesplan ----------
+// ---------- Heute und Woche ----------
 
-async function tagesplan() {
+const ZEIGEN = { erledigt: 'Erledigt', heutenicht: 'Heute nicht (ab morgen neu einplanen)', spaeter: 'Später (nächste Lücke)', nichtnoetig: 'Nicht nötig (noch sauber – Abstand neu ab heute)' };
+
+function zeile(t, text, untertitel, opt) {
+  const r = new UITableRow();
+  const c = r.addText(text, untertitel || null);
+  c.titleFont = opt && opt.fett ? Font.boldSystemFont(16) : Font.systemFont(15);
+  if (opt && opt.farbe) c.titleColor = opt.farbe;
+  if (opt && opt.klein) c.subtitleFont = Font.systemFont(12);
+  if (opt && opt.hoehe) r.height = opt.hoehe;
+  if (opt && opt.waehlen) { r.onSelect = opt.waehlen; r.dismissOnSelect = true; }
+  t.addRow(r);
+  return r;
+}
+
+function kopf(t, text, untertitel) {
+  const r = new UITableRow();
+  r.isHeader = true;
+  r.backgroundColor = new Color('#e8e8e8');
+  r.addText(text, untertitel || null);
+  t.addRow(r);
+}
+
+function eintraegeFuer(plan, datum) {
+  const liste = [];
+  for (const tm of plan.termine || []) {
+    if (D.ymd(new Date(tm.start)) !== datum) continue;
+    liste.push({ zeit: new Date(tm.start), text: `${D.hm(new Date(tm.start))}–${D.hm(new Date(tm.end))}  ${tm.titel}`, art: 'termin' });
+  }
+  for (const f of plan.fahrten || []) {
+    if (D.ymd(new Date(f.abfahrt)) !== datum) continue;
+    const ziel = f.nachArt === 'zuhause' ? 'nach Hause' : `zu ${f.zielName}`;
+    liste.push({ zeit: new Date(f.abfahrt), text: `${D.hm(new Date(f.abfahrt))}  Fahrt ${ziel} (${f.modus}, ${f.minuten} min${f.geschaetzt ? ', geschätzt' : ''})`, art: 'fahrt' });
+  }
+  for (const b of plan.bloecke || []) {
+    if (D.ymd(new Date(b.start)) !== datum) continue;
+    const extra = [b.unterwegs ? 'unterwegs' : '', b.fest ? 'fest' : ''].filter(Boolean).join(', ');
+    liste.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}${extra ? ` (${extra})` : ''}`, art: 'block', block: b });
+  }
+  return liste.sort((x, y) => x.zeit - y.zeit);
+}
+
+async function blockAktion(b) {
+  const optionen = ['erledigt', 'heutenicht', 'spaeter'].concat(b.einmalig ? [] : ['nichtnoetig']);
+  const schritte = b.schritte && b.schritte.length ? `\n${b.schritte.map(x => '- ' + x).join('\n')}` : '';
+  const i = await auswahl(b.name, `${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}${schritte}\nDanach wird neu geplant.`, optionen.map(o => ZEIGEN[o]));
+  if (i === -1) return;
+  await PLAN.aktion({ aktion: optionen[i], id: b.aufgabeId, ende: b.end });
+}
+
+async function zeitVorschlag() {
+  const n = await zahlEingabe('Wie viele Minuten hast du?', '', 15);
+  if (!n) return;
+  const { einst, aufgaben } = await PLAN.laden();
+  const v = PL.vorschlaege({ aufgaben, minuten: n, jetzt: new Date(), regeln: einst.regeln }).slice(0, 5);
+  if (!v.length) { await info('Nichts Passendes', `Keine fällige Aufgabe passt in ${n} Minuten.`); return; }
+  const heute = D.ymd(new Date());
+  const i = await auswahl(`${n} Minuten`, 'Antippen = jetzt erledigt.', v.map(o => `${o.a.name} · ${o.a.dauer} min · ${PL.dringlichkeitText(PL.dringlichkeit(o.faellig, heute))}`));
+  if (i === -1) return;
+  await PLAN.aktion({ aktion: 'erledigt', id: v[i].a.id });
+}
+
+async function heute() {
+  for (;;) {
+    const plan = await DAT.lesen('plan.json', null);
+    if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
+    const z = await PLAN.zustandLaden();
+    const { aufgaben, einst } = await PLAN.laden();
+    const jetzt = new Date();
+    const hT = D.ymd(jetzt), mT = D.ymd(D.plusTage(jetzt, 1));
+    const ueberfaellig = aufgaben.filter(a => a.aktiv !== false && PL.dringlichkeit(PL.faelligAm(a, hT), hT) > 3);
+    let wahl = null;
+    const t = new UITable();
+    t.showSeparators = true;
+    const k = new UITableRow();
+    k.isHeader = true;
+    k.addText(`Heute · ${D.kurz(jetzt)}`, `geplant ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))} · Aufgabe antippen`);
+    t.addRow(k);
+    const hInfo = (plan.tagesInfo || {})[hT];
+    if (hInfo && hInfo.grund) zeile(t, hInfo.krank ? 'Krank – heute keine Aufgaben' : hInfo.weg ? 'Abwesend – keine Aufgaben' : hInfo.keineAufgaben ? 'Heute keine Aufgaben' : `Frei: ${hInfo.grund}`, null, { farbe: Color.blue() });
+    if (plan.warnText) zeile(t, 'Passt nicht:', plan.warnText, { farbe: Color.red(), hoehe: 70, klein: true });
+    if (plan.terminText) zeile(t, 'Termine prüfen:', plan.terminText, { farbe: Color.red(), hoehe: 70, klein: true });
+    const wecker = (plan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
+    if (wecker.length) zeile(t, `Wecker: ${wecker.map(w => w.zeit).join(', ')}`);
+    zeile(t, 'Ich habe jetzt Zeit …', 'passende Aufgabe vorschlagen', { waehlen: () => { wahl = { art: 'zeit' }; } });
+    const keine = z.keineAufgaben === hT;
+    zeile(t, keine ? 'Heute wieder Aufgaben' : 'Heute keine Aufgaben', keine ? null : 'z. B. Besuch, kaputt, krank', { waehlen: () => { wahl = { art: 'keine' }; } });
+    if (ueberfaellig.length >= 3) zeile(t, `Rückstand auflösen (${ueberfaellig.length} lange überfällig)`, 'alles gilt als erledigt, Abstände neu ab heute', { waehlen: () => { wahl = { art: 'rueckstand' }; } });
+    zeile(t, 'Neu planen', 'mit gespeicherten Fahrzeiten, Wecker bleiben', { waehlen: () => { wahl = { art: 'neu' }; } });
+    for (const [datum, titel] of [[hT, 'Heute'], [mT, 'Morgen']]) {
+      kopf(t, `${titel} · ${D.kurz(D.ausYmd(datum))}`);
+      const liste = eintraegeFuer(plan, datum).filter(e => datum !== hT || e.art === 'block' || new Date(e.zeit) >= D.plusMin(jetzt, -60));
+      if (!liste.length) zeile(t, 'Nichts geplant.');
+      for (const e of liste) {
+        zeile(t, e.text, null, {
+          fett: e.art === 'block', farbe: e.art === 'termin' ? Color.gray() : null,
+          waehlen: e.block ? () => { wahl = { art: 'block', block: e.block }; } : null,
+        });
+      }
+    }
+    const geplant = new Set((plan.bloecke || []).map(b => b.aufgabeId));
+    const offen = aufgaben.filter(a => a.aktiv !== false && !geplant.has(a.id) && PL.dringlichkeit(PL.faelligAm(a, hT), hT) >= 0);
+    if (offen.length) {
+      kopf(t, 'Fällig, aber nicht eingeplant');
+      for (const a of offen) {
+        zeile(t, a.name, PL.dringlichkeitText(PL.dringlichkeit(PL.faelligAm(a, hT), hT)), {
+          klein: true, waehlen: () => { wahl = { art: 'offen', aufgabe: a }; },
+        });
+      }
+    }
+    await t.present();
+    if (!wahl) return;
+    if (wahl.art === 'block') await blockAktion(wahl.block);
+    if (wahl.art === 'zeit') await zeitVorschlag();
+    if (wahl.art === 'neu') { await PLAN.neuPlanen(); }
+    if (wahl.art === 'keine') { await PLAN.heuteKeineAufgaben(!keine); await PLAN.neuPlanen(); }
+    if (wahl.art === 'rueckstand' && await frage('Rückstand auflösen?', `${ueberfaellig.map(a => a.name).join(', ')}\n\nAlles gilt als "nicht nötig", die Abstände laufen neu ab heute.`)) {
+      await PLAN.rueckstandAufloesen();
+      await PLAN.neuPlanen();
+    }
+    if (wahl.art === 'offen') {
+      const i = await auswahl(wahl.aufgabe.name, 'Nicht eingeplant (kein Platz oder gesperrt).', ['Erledigt', 'Nicht nötig']);
+      if (i >= 0) await PLAN.aktion({ aktion: i === 0 ? 'erledigt' : 'nichtnoetig', id: wahl.aufgabe.id });
+    }
+    await DAT.logSchreiben();
+  }
+}
+
+async function woche() {
   const plan = await DAT.lesen('plan.json', null);
   if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
-  const eintraege = [];
-  let gewaehlt = null;
-  for (const b of plan.bloecke) eintraege.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}${b.unterwegs ? ' (unterwegs)' : ''}`, fett: true, block: b });
-  for (const f of plan.fahrten) {
-    if (new Date(f.ankunft) < new Date()) continue;
-    const ziel = f.nachArt === 'zuhause' ? 'nach Hause' : `zu ${f.zielName}`;
-    eintraege.push({ zeit: new Date(f.abfahrt), text: `${D.hm(new Date(f.abfahrt))}  Fahrt ${ziel} (${f.modus}, ${f.minuten} min${f.geschaetzt ? ', geschätzt' : ''})` });
-  }
-  eintraege.sort((a, b) => a.zeit - b.zeit);
-
   const t = new UITable();
   t.showSeparators = true;
-  const kopf = new UITableRow();
-  kopf.isHeader = true;
-  kopf.addText('Tagesplan', `geplant ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))} · Aufgabe antippen zum Abhaken`);
-  t.addRow(kopf);
-  if (plan.warnText) {
-    const w = new UITableRow();
-    w.addText('Passt nicht:', plan.warnText).titleColor = Color.red();
-    w.height = 70;
-    t.addRow(w);
-  }
-  if (plan.wecker && plan.wecker.length) {
-    const w = new UITableRow();
-    w.addText('Wecker (24 Std.)', plan.wecker.map(x => x.zeit).join(', '));
-    t.addRow(w);
-  }
-  let tag = '';
-  for (const e of eintraege) {
-    const k = D.kurz(e.zeit);
-    if (k !== tag) {
-      tag = k;
-      const r = new UITableRow();
-      r.isHeader = true;
-      r.backgroundColor = new Color('#e8e8e8');
-      r.addText(k);
-      t.addRow(r);
+  const tage = plan.tagInfo || [];
+  const naechsterFrei = tage.find(x => !x.arbeit && D.ymd(new Date()) < x.datum);
+  const k = new UITableRow();
+  k.isHeader = true;
+  k.addText('Woche', naechsterFrei ? `Nächster freier Tag: ${D.kurz(D.ausYmd(naechsterFrei.datum))}` : '');
+  t.addRow(k);
+  for (const tag of tage) {
+    const termine = (plan.termine || []).filter(x => D.ymd(new Date(x.start)) === tag.datum);
+    const arbeit = termine.find(x => x.art === 'arbeit');
+    const lueckeMin = ((plan.luecken || []).find(l => l.datum === tag.datum) || { luecken: [] }).luecken
+      .reduce((s, l) => s + Math.round((l.end - l.start) / 60000), 0);
+    const tInfo = (plan.tagesInfo || {})[tag.datum];
+    const art = tInfo && tInfo.krank ? 'krank' : tInfo && tInfo.weg ? 'abwesend' : arbeit ? `Arbeit ${D.hm(new Date(arbeit.start))}–${D.hm(new Date(arbeit.end))}` : 'frei';
+    kopf(t, `${D.kurz(D.ausYmd(tag.datum))} · ${art}`, `${lueckeMin} min frei für Aufgaben`);
+    for (const x of termine.filter(x => x.art !== 'arbeit')) zeile(t, `${D.hm(new Date(x.start))}  ${x.titel}`, null, { farbe: Color.gray() });
+    for (const b of (plan.bloecke || []).filter(b => D.ymd(new Date(b.start)) === tag.datum)) {
+      zeile(t, `${D.hm(new Date(b.start))}  ${b.name}`, null, { fett: true });
     }
-    const r = new UITableRow();
-    const c = r.addText(e.text);
-    if (e.block) {
-      r.onSelect = () => { gewaehlt = e.block; };
-      r.dismissOnSelect = true;
-    }
-    if (e.fett) c.titleFont = Font.boldSystemFont(16);
-    else c.titleFont = Font.systemFont(14);
-    t.addRow(r);
-  }
-  if (!eintraege.length) {
-    const r = new UITableRow();
-    r.addText('Keine Aufgaben und Fahrten geplant.');
-    t.addRow(r);
   }
   await t.present();
-  if (!gewaehlt) return false;
-  const b = gewaehlt;
-  const i = await auswahl(b.name, `${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}\nDanach wird sofort neu geplant.`,
-    ['Erledigt', 'Heute nicht (ab morgen neu einplanen)', 'Später (nächste Lücke)']);
-  if (i === -1) return false;
-  await PLAN.aktion({ aktion: ['erledigt', 'heutenicht', 'spaeter'][i], id: b.aufgabeId, ende: b.end });
-  return true; // Kurzbefehl wurde gestartet, App wird verlassen
 }
 
 // ---------- Aufgaben ----------
 
+const MONATE = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
 function aufgabeKurz(a) {
-  const f = PL.faelligAm(a, D.ymd(new Date()));
-  return `${a.aktiv === false ? '(aus) ' : ''}${a.name} · alle ${a.intervall} T · ${a.dauer} min · ${a.pflicht ? 'Pflicht' : 'wenn Zeit'} · fällig ${D.deutschDatum(f)}`;
+  const h = D.ymd(new Date());
+  const f = PL.faelligAm(a, h);
+  const merkmale = [a.pflicht ? 'Pflicht' : 'wenn Zeit', a.unterwegs ? 'unterwegs' : '', a.laut ? 'laut' : '', a.monate && a.monate.length ? a.monate.map(m => MONATE[m]).join('/') : ''].filter(Boolean).join(', ');
+  return `${a.aktiv === false ? '(aus) ' : ''}${a.name} · ${PL.dringlichkeitText(PL.dringlichkeit(f, h))} · alle ${a.intervall} T · ${a.dauer} min · ${merkmale}`;
 }
 
 async function aufgabeBearbeiten(aufgaben, a) {
@@ -256,6 +351,11 @@ async function aufgabeBearbeiten(aufgaben, a) {
       `Dauer: ${a.dauer} min`,
       a.pflicht ? 'Art: Pflicht (ändern)' : 'Art: wenn Zeit (ändern)',
       `Zuletzt erledigt: ${a.letzte ? D.deutschDatum(a.letzte) : 'nie'}`,
+      `Schritte: ${(a.schritte || []).join(', ') || 'keine'}`,
+      `Folgeaufgabe: ${a.folge ? `${a.folge.name} nach ${a.folge.nachMin} min` : 'keine'}`,
+      `Besorgung unterwegs: ${a.unterwegs ? 'ja' : 'nein'}`,
+      `Laut (Ruhezeiten): ${a.laut ? 'ja' : 'nein'}`,
+      `Nur in Monaten: ${a.monate && a.monate.length ? a.monate.map(m => MONATE[m]).join(', ') : 'immer'}`,
       a.aktiv === false ? 'Einschalten' : 'Ausschalten',
       'Löschen',
     ]);
@@ -265,8 +365,26 @@ async function aufgabeBearbeiten(aufgaben, a) {
     if (i === 2) { const n = await zahlEingabe('Dauer in Minuten', '', a.dauer); if (n) a.dauer = n; }
     if (i === 3) a.pflicht = !a.pflicht;
     if (i === 4) { const d = await datumAbfragen('Zuletzt erledigt', a.letzte); if (d !== undefined) a.letzte = d; }
-    if (i === 5) a.aktiv = a.aktiv === false;
+    if (i === 5) {
+      const t = await eingabe('Schritte', 'Mit Komma trennen. Erscheinen in der Mitteilung.', (a.schritte || []).join(', '));
+      if (t != null) a.schritte = t.split(',').map(x => x.trim()).filter(Boolean);
+    }
     if (i === 6) {
+      const name = await eingabe('Folgeaufgabe', 'Was danach? Leer = keine. Beispiel: Wäsche aufhängen', a.folge ? a.folge.name : '');
+      if (name === '') delete a.folge;
+      else if (name) {
+        const nach = await zahlEingabe('Nach wie vielen Minuten?', 'Erinnert bis zu 3-mal, bis du sie bestätigst.', a.folge ? a.folge.nachMin : 120);
+        if (nach != null) a.folge = { name, nachMin: nach, dauer: 15, zuhause: await frage('Zuhause nötig?', 'Aufgabe nur planen, wenn du danach noch zuhause bist?') };
+      }
+    }
+    if (i === 7) a.unterwegs = !a.unterwegs;
+    if (i === 8) a.laut = !a.laut;
+    if (i === 9) {
+      const t = await eingabe('Monate', 'Zahlen mit Komma, z. B. 3, 4 für März und April. Leer = immer.', (a.monate || []).join(', '));
+      if (t != null) a.monate = t.split(',').map(x => Number(x.trim())).filter(x => x >= 1 && x <= 12);
+    }
+    if (i === 10) a.aktiv = a.aktiv === false;
+    if (i === 11) {
       if (await frage('Löschen?', a.name)) {
         aufgaben.splice(aufgaben.indexOf(a), 1);
         await PLAN.aufgabenSpeichern(aufgaben);
@@ -280,9 +398,11 @@ async function aufgabeBearbeiten(aufgaben, a) {
 async function aufgabenMenue() {
   const { aufgaben } = await PLAN.laden();
   for (;;) {
-    const i = await auswahl('Aufgaben', 'Änderungen gelten beim nächsten Planen.', [...aufgaben.map(aufgabeKurz), '+ Neue Aufgabe']);
+    const h = D.ymd(new Date());
+    const sortiert = aufgaben.slice().sort((x, y) => PL.dringlichkeit(PL.faelligAm(y, h), h) - PL.dringlichkeit(PL.faelligAm(x, h), h));
+    const i = await auswahl('Aufgaben', 'Dringendste zuerst. Änderungen gelten beim nächsten Planen.', [...sortiert.map(aufgabeKurz), '+ Neue Aufgabe', '+ Aus Vorlage', 'Rückstand auflösen']);
     if (i === -1) return;
-    if (i === aufgaben.length) {
+    if (i === sortiert.length) {
       const name = await eingabe('Neue Aufgabe', 'Name');
       if (!name) continue;
       const intervall = await zahlEingabe('Alle wie viele Tage?', '', 7);
@@ -294,7 +414,25 @@ async function aufgabenMenue() {
       await PLAN.aufgabenSpeichern(aufgaben);
       continue;
     }
-    await aufgabeBearbeiten(aufgaben, aufgaben[i]);
+    if (i === sortiert.length + 1) {
+      const v = S.vorlagenAufgaben().filter(x => !aufgaben.some(a => a.name === x.name));
+      const k = await auswahl('Vorlage', 'Antippen zum Hinzufügen.', v.map(x => `${x.name} · alle ${x.intervall} T · ${x.dauer} min${x.monate ? ' · ' + x.monate.map(m => MONATE[m]).join('/') : ''}`));
+      if (k === -1) continue;
+      const d = await datumAbfragen(`${v[k].name}: zuletzt erledigt?`, null);
+      if (d === undefined) continue;
+      aufgaben.push({ id: `a${Date.now().toString(36)}`, ...v[k], letzte: d, aktiv: true });
+      await PLAN.aufgabenSpeichern(aufgaben);
+      continue;
+    }
+    if (i === sortiert.length + 2) {
+      if (await frage('Rückstand auflösen?', 'Alles Überfällige gilt als "nicht nötig", die Abstände laufen neu ab heute. Praktisch nach Urlaub oder Krankheit.')) {
+        const n = await PLAN.rueckstandAufloesen();
+        await info('Erledigt', `${n} Aufgaben neu ab heute.`);
+        return;
+      }
+      continue;
+    }
+    await aufgabeBearbeiten(aufgaben, sortiert[i]);
   }
 }
 
@@ -304,23 +442,30 @@ const REGELN = [
   ['pauseNachHeim', 'Pause nach dem Heimkommen (min)'],
   ['ruheVorAbfahrt', 'Ruhe vor jeder Abfahrt (min)'],
   ['minLuecke', 'Lücke mindestens (min)'],
-  ['tagStart', 'Aufgaben frühestens (Uhrzeit)', 'zeit'],
+  ['tagStart', 'Arbeitstage: Aufgaben ab (Uhrzeit)', 'zeit'],
+  ['tagStartFrei', 'Freie Tage: Aufgaben ab (Uhrzeit)', 'zeit'],
   ['tagEnde', 'Aufgaben enden spätestens (Uhrzeit)', 'zeit'],
-  ['maxProTag', 'Höchstens Aufgaben pro Tag (min)'],
+  ['unterwegsBis', 'Besorgungen spätestens bis (Uhrzeit)', 'zeit'],
+  ['maxArbeitstag', 'Arbeitstag: höchstens Aufgaben (min)'],
+  ['maxFreierTag', 'Freier Tag: höchstens Aufgaben (min)'],
+  ['langAb', 'Ab so vielen min an freie Tage legen'],
   ['tage', 'Planung für so viele Tage'],
   ['vorziehenTage', 'Vorziehen um höchstens (Tage)'],
   ['weckerVorlauf', 'Wecker vor Abfahrt (min)'],
   ['weckerStunden', 'Wecker für die nächsten (Std.)'],
   ['fallbackMin', 'Fahrzeit, wenn unbekannt (min)'],
   ['cacheTage', 'Fahrzeiten neu abfragen nach (Tagen)'],
+  ['planruhe', 'Planruhe: Blöcke bleiben an ihrer Zeit', 'schalter'],
+  ['besorgungenSonntags', 'Besorgungen auch sonntags', 'schalter'],
 ];
 
 async function regelnMenue(einst) {
   const r = einst.regeln;
   for (;;) {
-    const i = await auswahl('Zeiten und Regeln', 'Vorziehen: Ist am Fälligkeitstag kein Platz, wird so viele Tage früher gesucht.', REGELN.map(([k, l]) => `${l}: ${r[k]}`));
+    const i = await auswahl('Zeiten und Regeln', 'Vorziehen: Ist am Fälligkeitstag kein Platz, wird so viele Tage früher gesucht.', REGELN.map(([k, l, art]) => `${l}: ${art === 'schalter' ? (r[k] === false ? 'aus' : 'an') : r[k]}`));
     if (i === -1) return;
     const [k, l, art] = REGELN[i];
+    if (art === 'schalter') { r[k] = r[k] === false; await PLAN.einstellungenSpeichern(einst); continue; }
     const neu = art === 'zeit' ? await uhrzeitEingabe(l, r[k]) : await zahlEingabe(l, '', r[k]);
     if (neu != null) { r[k] = neu; await PLAN.einstellungenSpeichern(einst); }
   }
@@ -396,52 +541,130 @@ async function kalenderMenue(einst) {
   }
 }
 
+async function ruhezeitenMenue(einst) {
+  const r = einst.ruhezeiten;
+  for (;;) {
+    const i = await auswahl('Ruhezeiten (Option)', 'Gilt für Aufgaben, die als "laut" markiert sind (Standard: Staubsaugen): nicht an Sonn- und Feiertagen und nur im Zeitfenster.', [
+      `Ruhezeiten: ${r.an ? 'an' : 'aus'}`, `Laut erst ab: ${r.von}`, `Laut nur bis: ${r.bis}`,
+    ]);
+    if (i === -1) return;
+    if (i === 0) r.an = !r.an;
+    if (i === 1) { const t = await uhrzeitEingabe('Laut erst ab', r.von); if (t) r.von = t; }
+    if (i === 2) { const t = await uhrzeitEingabe('Laut nur bis', r.bis); if (t) r.bis = t; }
+    await PLAN.einstellungenSpeichern(einst);
+  }
+}
+
+async function stichwortMenue(einst) {
+  const w = einst.tage;
+  const arten = [['frei', 'frei (keine Schicht, Aufgaben ja)'], ['krank', 'krank (keine Schicht, keine Aufgaben)'], ['weg', 'abwesend (keine Schicht, keine Aufgaben)']];
+  for (;;) {
+    const i = await auswahl('Ganztägige Termine', 'Ein ganztägiger Termin mit diesem Wort im Titel (in jedem Kalender) gilt als … "urlaub*" = Wort beginnt so.', arten.map(([k, l]) => `${l}: ${w[k].join(', ')}`));
+    if (i === -1) return;
+    const [k, l] = arten[i];
+    const t = await eingabe(l, 'Mit Komma trennen', w[k].join(', '));
+    if (t != null) { w[k] = t.split(',').map(x => x.trim().toLowerCase()).filter(Boolean); await PLAN.einstellungenSpeichern(einst); }
+  }
+}
+
+async function schichtAendernMenue(einst) {
+  const sch = einst.schichten;
+  for (;;) {
+    const heute = D.ymd(new Date());
+    sch.aenderungen = (sch.aenderungen || []).filter(a => a.datum >= heute).sort((x, y) => (x.datum < y.datum ? -1 : 1));
+    const i = await auswahl('Einzelne Schicht ändern', 'Überstunden, Tausch, Zusatzschicht. Geht vor dem Muster. Antippen zum Löschen.',
+      [...sch.aenderungen.map(a => `${D.kurz(D.ausYmd(a.datum))}: ${a.zeit || 'frei'}`), '+ Schicht ändern']);
+    if (i === -1) return;
+    if (i < sch.aenderungen.length) {
+      if (await frage('Änderung löschen?', 'Dann gilt wieder das normale Muster.')) sch.aenderungen.splice(i, 1);
+    } else {
+      const datum = await datumAbfragen('Welcher Tag?', null);
+      if (!datum) continue;
+      const t = await eingabe('Neue Zeit', 'Format 07:00-17:30, leer = frei', '');
+      if (t == null) continue;
+      if (t !== '' && !/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/.test(t)) { await info('Ungültig', `"${t}"`); continue; }
+      sch.aenderungen = sch.aenderungen.filter(a => a.datum !== datum).concat([{ datum, zeit: t === '' ? null : t.replace(/\s/g, '') }]);
+    }
+    await PLAN.einstellungenSpeichern(einst);
+  }
+}
+
+async function sicherungMenue() {
+  const i = await auswahl('Daten sichern', 'Alle Einstellungen, Aufgaben, Orte usw. als eine Datei. iCloud sichert zusätzlich automatisch.', ['Sicherung speichern', 'Sicherung einspielen']);
+  if (i === 0) {
+    const s2 = DAT.sicherungErstellen();
+    await DocumentPicker.exportString(JSON.stringify(s2, null, 2), `planer-sicherung-${D.ymd(new Date())}.json`);
+  }
+  if (i === 1) {
+    const pfade = await DocumentPicker.open(['public.json', 'public.text']);
+    if (!pfade || !pfade.length) return;
+    const text = FileManager.local().readString(pfade[0]);
+    if (!(await frage('Einspielen?', 'Deine jetzigen Daten werden überschrieben.'))) return;
+    const n = await DAT.sicherungEinspielen(JSON.parse(text));
+    await info('Eingespielt', `${n} Dateien. Danach "Jetzt planen".`);
+  }
+}
+
 async function einstellungenMenue() {
   const { einst } = await PLAN.laden();
   for (;;) {
     const sch = einst.schichten;
-    const i = await auswahl('Einstellungen', '', [
-      'Zeiten und Regeln',
-      'Orte',
-      'Verkehrsmittel',
-      'Schichtzeiten',
-      `Schichtwoche neu festlegen (jetzt: Woche ${sch.referenzMontag ? SCH.wochenTyp(new Date(), sch.referenzMontag, sch.referenzTyp) : '?'})`,
-      `Weitere freie Tage: ${(sch.extraFrei || []).join(', ') || 'keine'}`,
-      'Kalender beachten / ignorieren',
-      `Fahrten im Kalender "Planer": ${einst.kalender.fahrtenEintragen ? 'an' : 'aus'}`,
-      `Aufgaben in Erinnerungen-App (Liste "${einst.erinnerungen.liste}"): ${einst.erinnerungen.an ? 'an' : 'aus'}`,
-    ]);
+    const punkte = [
+      ['Zeiten und Regeln', () => regelnMenue(einst)],
+      ['Urlaub / krank / abwesend', ausnahmenMenue],
+      ['Einzelne Schicht ändern', () => schichtAendernMenue(einst)],
+      ['Schichtzeiten (Woche A/B)', () => schichtzeitenMenue(einst)],
+      [`Schichtwoche neu festlegen (jetzt: Woche ${sch.referenzMontag ? SCH.wochenTyp(new Date(), sch.referenzMontag, sch.referenzTyp) : '?'})`, async () => { if (await wocheFestlegen(einst)) await PLAN.einstellungenSpeichern(einst); }],
+      ['Ganztägige Termine erkennen (Urlaub, krank …)', () => stichwortMenue(einst)],
+      [`Weitere freie Tage: ${(sch.extraFrei || []).join(', ') || 'keine'}`, async () => {
+        const t = await eingabe('Weitere freie Tage', 'Jedes Jahr frei, z. B. 24.12, 31.12 (Feiertage Niedersachsen sind automatisch frei)', (sch.extraFrei || []).join(', '));
+        if (t != null) { sch.extraFrei = t.split(',').map(x => x.trim()).filter(Boolean); await PLAN.einstellungenSpeichern(einst); }
+      }],
+      [`Ruhezeiten für laute Aufgaben (Option): ${einst.ruhezeiten.an ? 'an' : 'aus'}`, () => ruhezeitenMenue(einst)],
+      ['Orte (Zuhause, Arbeit)', () => orteMenue(einst)],
+      ['Gelernte Orte', orteGelerntMenue],
+      ['Verkehrsmittel', () => verkehrMenue(einst)],
+      ['Kalender beachten / ignorieren', () => kalenderMenue(einst)],
+      [`Fahrten im Kalender "Planer": ${einst.kalender.fahrtenEintragen ? 'an' : 'aus'}`, async () => { einst.kalender.fahrtenEintragen = !einst.kalender.fahrtenEintragen; await PLAN.einstellungenSpeichern(einst); }],
+      [`Aufgaben in Erinnerungen-App (Liste "${einst.erinnerungen.liste}"): ${einst.erinnerungen.an ? 'an' : 'aus'}`, async () => { einst.erinnerungen.an = !einst.erinnerungen.an; await PLAN.einstellungenSpeichern(einst); }],
+      [`Wachhund (Mitteilung, wenn der 06:00-Lauf fehlt): ${einst.wachhund.an ? 'an' : 'aus'}`, async () => { einst.wachhund.an = !einst.wachhund.an; await PLAN.einstellungenSpeichern(einst); }],
+      ['Daten sichern / einspielen', sicherungMenue],
+      ['Ersteinrichtung', ersteinrichtung],
+      ['Test: planen ohne Kurzbefehl (ohne Wecker)', async () => {
+        if (!(await kalenderPruefen(einst))) return;
+        const p2 = await PLAN.ohneKurzbefehl();
+        await info('Geplant', `${p2.bloecke.length} Aufgaben-Blöcke. Wecker stellt nur der Kurzbefehl.`);
+      }],
+      ['Update laden', async () => Safari.open(`scriptable:///run/${encodeURIComponent('Planer Update')}`)],
+    ];
+    const i = await auswahl('Einstellungen', '', punkte.map(p2 => p2[0]));
     if (i === -1) return;
-    if (i === 0) await regelnMenue(einst);
-    if (i === 1) await orteMenue(einst);
-    if (i === 2) await verkehrMenue(einst);
-    if (i === 3) await schichtzeitenMenue(einst);
-    if (i === 4 && await wocheFestlegen(einst)) await PLAN.einstellungenSpeichern(einst);
-    if (i === 5) {
-      const t = await eingabe('Weitere freie Tage', 'Jedes Jahr frei, z. B. 24.12, 31.12 (Feiertage Niedersachsen sind automatisch frei)', (sch.extraFrei || []).join(', '));
-      if (t != null) { sch.extraFrei = t.split(',').map(x => x.trim()).filter(Boolean); await PLAN.einstellungenSpeichern(einst); }
-    }
-    if (i === 6) await kalenderMenue(einst);
-    if (i === 7) { einst.kalender.fahrtenEintragen = !einst.kalender.fahrtenEintragen; await PLAN.einstellungenSpeichern(einst); }
-    if (i === 8) { einst.erinnerungen.an = !einst.erinnerungen.an; await PLAN.einstellungenSpeichern(einst); }
+    await punkte[i][1]();
+    await DAT.logSchreiben();
   }
 }
 
 // ---------- Urlaub / Ausnahmen ----------
+
+const ART_TEXT = { frei: 'frei', krank: 'krank', weg: 'abwesend' };
 
 async function ausnahmenMenue() {
   const { einst } = await PLAN.laden();
   const liste = einst.schichten.ausnahmen;
   for (;;) {
     liste.sort((a, b) => (a.von < b.von ? -1 : 1));
-    const i = await auswahl('Urlaub / Ausnahmen', 'An diesen Tagen keine Schicht. Antippen zum Löschen.',
-      [...liste.map(a => `${D.deutschDatum(a.von)}${a.bis !== a.von ? ' – ' + D.deutschDatum(a.bis) : ''} ${a.text || ''}`), '+ Neuer Zeitraum']);
+    const i = await auswahl('Urlaub / krank / abwesend', 'frei: keine Schicht, Aufgaben ja. krank und abwesend: keine Schicht, keine Aufgaben. Ganztägige Kalendertermine wie "Urlaub" oder "Krank" erkennt der Planer auch selbst. Antippen zum Löschen.',
+      [...liste.map(a => `${D.deutschDatum(a.von)}${a.bis !== a.von ? ' – ' + D.deutschDatum(a.bis) : ''} ${ART_TEXT[a.art || 'frei']}${a.text ? ': ' + a.text : ''}`), '+ Neuer Zeitraum']);
     if (i === -1) return;
     if (i === liste.length) {
       const b = await bereichAbfragen('Neuer Zeitraum');
       if (!b) continue;
-      const text = await eingabe('Bezeichnung', 'z. B. Urlaub', 'Urlaub');
-      liste.push({ von: b.von, bis: b.bis, text: text || '' });
+      const k = await auswahl('Was?', '', ['frei / Urlaub zuhause', 'krank', 'abwesend / verreist']);
+      if (k === -1) continue;
+      const art = ['frei', 'krank', 'weg'][k];
+      const text = await eingabe('Bezeichnung', 'optional, z. B. Urlaub', art === 'frei' ? 'Urlaub' : '');
+      liste.push({ von: b.von, bis: b.bis, text: text || '', art });
+      if (art !== 'frei') await info('Hinweis', 'Danach kannst du unter "Aufgaben" → "Rückstand auflösen" alles Liegengebliebene auf einmal als erledigt werten.');
     } else if (await frage('Löschen?', `${D.deutschDatum(liste[i].von)} – ${D.deutschDatum(liste[i].bis)}`)) {
       liste.splice(i, 1);
     }
@@ -527,16 +750,25 @@ async function fristenMenue() {
     const fristen = await SON.fristenLaden();
     fristen.sort((a, b) => (a.datum < b.datum ? -1 : 1));
     const i = await auswahl('Fristen', 'TÜV, Versicherungen usw. Erscheinen auch in der Erinnerungen-Liste "Fristen" – dort abhaken = erledigt.',
-      [...fristen.map(f => `${D.deutschDatum(f.datum)} ${f.name}${f.monate > 0 ? ` (alle ${f.monate} Mon.)` : ''}`), '+ Neue Frist']);
+      [...fristen.map(f => `${D.deutschDatum(f.datum)} ${f.name}${f.monate > 0 ? ` (alle ${f.monate} Mon.)` : ''}`), '+ Neue Frist', '+ Aus Vorlage']);
     if (i === -1) return;
     if (i < fristen.length) { await fristBearbeiten(fristen, fristen[i]); continue; }
-    const name = await eingabe('Neue Frist', 'Name, z. B. TÜV Auto oder Kündigung Handyvertrag');
+    let vorlage = null;
+    if (i === fristen.length + 1) {
+      const v = S.vorlagenFristen();
+      const k = await auswahl('Vorlage', '', v.map(x => x.name));
+      if (k === -1) continue;
+      vorlage = v[k];
+    }
+    const name = vorlage ? vorlage.name : await eingabe('Neue Frist', 'Name, z. B. TÜV Auto oder Kündigung Handyvertrag');
     if (!name) continue;
-    const datum = await datumAbfragen('Fällig am', null);
+    let vorschlag = null;
+    if (vorlage && vorlage.datumMMTT) vorschlag = SO.naechstesDatum(vorlage.datumMMTT, D.ymd(new Date()));
+    const datum = await datumAbfragen(`${name}: fällig am`, vorschlag);
     if (!datum) continue;
-    const monate = await zahlEingabe('Wiederholung', 'Alle wie viele Monate? 0 = einmalig (TÜV: 24, Versicherung: 12)', 12);
+    const monate = vorlage ? vorlage.monate : await zahlEingabe('Wiederholung', 'Alle wie viele Monate? 0 = einmalig (TÜV: 24, Versicherung: 12)', 12);
     if (monate == null) continue;
-    fristen.push({ id: `f${Date.now().toString(36)}`, name, datum, monate, vorlaufWochen: [4, 1], dauer: 15 });
+    fristen.push({ id: `f${Date.now().toString(36)}`, name, datum, monate, vorlaufWochen: vorlage ? vorlage.vorlaufWochen : [4, 1], dauer: 15 });
     await SON.speichern('fristen.json', fristen);
   }
 }
@@ -610,11 +842,132 @@ async function blumenMenue() {
   }
 }
 
+// ---------- Einkauf ----------
+
+async function einkaufMenue() {
+  const { einst } = await PLAN.laden();
+  const e = einst.einkauf;
+  for (;;) {
+    const i = await auswahl('Einkaufsliste', `Die Liste ist die Erinnerungen-Liste "${e.liste}" – dort, per Siri ("Füge Milch zu Einkauf hinzu") oder hier eintragen. Einkaufen wird als Besorgung geplant, sobald ${e.abAnzahl} Sachen draufstehen, etwas ${e.abTagen} Tage wartet oder ein Eintrag mit "!" beginnt. "Erledigt" hakt die Liste ab.`, [
+      '+ Sache hinzufügen', `Einkaufen planen: ${e.an ? 'an' : 'aus'}`, `Ab ${e.abAnzahl} Sachen`, `Spätestens nach ${e.abTagen} Tagen`, `Dauer: ${e.dauer} min`,
+    ]);
+    if (i === -1) return;
+    if (i === 0) {
+      const t = await eingabe('Hinzufügen', 'Mehrere mit Komma. "!" am Anfang = dringend.', '');
+      if (t) for (const x of t.split(',').map(y => y.trim()).filter(Boolean)) await ERI.einkaufHinzufuegen(einst, x, m => DAT.log(m));
+      continue;
+    }
+    if (i === 1) e.an = !e.an;
+    if (i === 2) { const n = await zahlEingabe('Ab wie vielen Sachen?', '', e.abAnzahl); if (n) e.abAnzahl = n; }
+    if (i === 3) { const n = await zahlEingabe('Spätestens nach … Tagen', '', e.abTagen); if (n) e.abTagen = n; }
+    if (i === 4) { const n = await zahlEingabe('Dauer (min)', '', e.dauer); if (n) e.dauer = n; }
+    await PLAN.einstellungenSpeichern(einst);
+  }
+}
+
+// ---------- Medikamente ----------
+
+const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+function medKurz(m) {
+  const tage = m.wochentage && m.wochentage.length ? m.wochentage.map(x => WT[x]).join('/') : 'täglich';
+  const vorrat = AL.medVorratTage(m);
+  return `${m.an === false ? '(aus) ' : ''}${m.name} · ${(m.zeiten || []).join(', ')} · ${tage}${vorrat != null ? ` · Vorrat ${vorrat} Tage` : ''}`;
+}
+
+async function medBearbeiten(meds, m) {
+  for (;;) {
+    const i = await auswahl(m.name, medKurz(m), [
+      `Name: ${m.name}`, `Uhrzeiten: ${(m.zeiten || []).join(', ')}`,
+      `Wochentage: ${m.wochentage && m.wochentage.length ? m.wochentage.map(x => WT[x]).join(', ') : 'täglich'}`,
+      `Stück pro Einnahme: ${m.proEinnahme || 1}`, `Vorrat (Stück): ${m.vorrat == null ? 'nicht zählen' : m.vorrat}`,
+      `Packungsgröße: ${m.packung || '–'}`, `Nachkaufen, wenn Vorrat unter ${m.nachkaufenTage || 7} Tagen`,
+      m.an === false ? 'Einschalten' : 'Ausschalten', 'Löschen',
+    ]);
+    if (i === -1) return;
+    if (i === 0) { const t = await eingabe('Name', '', m.name); if (t) m.name = t; }
+    if (i === 1) {
+      const t = await eingabe('Uhrzeiten', 'Mit Komma, z. B. 08:00, 20:00', (m.zeiten || []).join(', '));
+      if (t != null) {
+        const z = t.split(',').map(x => x.trim()).filter(x => /^\d{1,2}:\d{2}$/.test(x)).map(x => x.padStart(5, '0'));
+        if (z.length) m.zeiten = z;
+      }
+    }
+    if (i === 2) {
+      const t = await eingabe('Wochentage', 'Zahlen 1 = Mo … 7 = So, mit Komma. Leer = täglich.', (m.wochentage || []).join(', '));
+      if (t != null) m.wochentage = t.split(',').map(x => Number(x.trim())).filter(x => x >= 1 && x <= 7);
+    }
+    if (i === 3) { const n = await zahlEingabe('Stück pro Einnahme', '', m.proEinnahme || 1); if (n) m.proEinnahme = n; }
+    if (i === 4) {
+      const t = await eingabe('Vorrat', 'Wie viele Stück hast du? Leer = nicht zählen.', m.vorrat == null ? '' : String(m.vorrat), '', true);
+      if (t != null) m.vorrat = t === '' ? null : Math.max(0, Math.round(Number(t)) || 0);
+    }
+    if (i === 5) { const n = await zahlEingabe('Packungsgröße (Stück)', 'Nach "Apotheke erledigt" wird der Vorrat um so viel erhöht.', m.packung || 0); if (n != null) m.packung = n || null; }
+    if (i === 6) { const n = await zahlEingabe('Nachkaufen ab … Tagen Restvorrat', '', m.nachkaufenTage || 7); if (n) m.nachkaufenTage = n; }
+    if (i === 7) m.an = m.an === false;
+    if (i === 8 && await frage('Löschen?', m.name)) { meds.splice(meds.indexOf(m), 1); await PLAN.medsSpeichern(meds); return; }
+    await PLAN.medsSpeichern(meds);
+  }
+}
+
+async function medikamenteMenue() {
+  for (;;) {
+    const meds = await PLAN.medsLaden();
+    const i = await auswahl('Medikamente', 'Mitteilung zur Uhrzeit mit Knopf "Genommen" (lange drücken), Nachfrage nach 30 min. Mit Vorrat plant der Planer rechtzeitig "Apotheke" als Besorgung.', [...meds.map(medKurz), '+ Medikament']);
+    if (i === -1) return;
+    if (i < meds.length) { await medBearbeiten(meds, meds[i]); continue; }
+    const name = await eingabe('Medikament', 'Name');
+    if (!name) continue;
+    const t = await eingabe('Uhrzeiten', 'Mit Komma, z. B. 08:00, 20:00', '08:00');
+    if (!t) continue;
+    const zeiten = t.split(',').map(x => x.trim()).filter(x => /^\d{1,2}:\d{2}$/.test(x)).map(x => x.padStart(5, '0'));
+    if (!zeiten.length) continue;
+    meds.push({ id: `m${Date.now().toString(36)}`, name, zeiten, proEinnahme: 1, vorrat: null, an: true });
+    await PLAN.medsSpeichern(meds);
+  }
+}
+
+// ---------- Müll (Option) ----------
+
+async function muellMenue() {
+  const { einst } = await PLAN.laden();
+  const m = einst.muell;
+  for (;;) {
+    const i = await auswahl('Müllabfuhr (Option)', 'Voraussetzung: Der Abfallkalender deines Entsorgers ist in der Kalender-App abonniert (Kalender-App → Kalender → Kalenderabonnement hinzufügen).', [
+      `Erinnerung: ${m.an ? 'an' : 'aus'}`, `Kalender: ${m.kalender || '(wählen)'}`, `Am Vorabend um: ${m.vorabend || 'aus'}`, `Am Morgen um: ${m.morgens || 'aus'}`,
+    ]);
+    if (i === -1) return;
+    if (i === 0) m.an = !m.an;
+    if (i === 1) {
+      const namen = await KAL.alleNamen();
+      const k = await auswahl('Abfallkalender', '', namen);
+      if (k >= 0) m.kalender = namen[k];
+    }
+    if (i === 2) { const t = await eingabe('Vorabend', 'Uhrzeit, leer = aus', m.vorabend || '19:00'); if (t != null) m.vorabend = t; }
+    if (i === 3) { const t = await eingabe('Morgens', 'Uhrzeit, leer = aus', m.morgens || '06:30'); if (t != null) m.morgens = t; }
+    await PLAN.einstellungenSpeichern(einst);
+  }
+}
+
+async function extrasMenue() {
+  for (;;) {
+    const punkte = [
+      ['Einkaufsliste', einkaufMenue], ['Medikamente', medikamenteMenue], ['Geburtstage', geburtstageMenue],
+      ['Fristen (TÜV, Versicherungen …)', fristenMenue], ['Checklisten', checklistenMenue], ['Blumen', blumenMenue],
+      ['Müllabfuhr (Option)', muellMenue],
+    ];
+    const i = await auswahl('Extras', '', punkte.map(p2 => p2[0]));
+    if (i === -1) return;
+    await punkte[i][1]();
+    await DAT.logSchreiben();
+  }
+}
+
 // ---------- Orte ----------
 
 const QUELLE = { suche: 'gefunden', hand: 'von dir', standort: 'Standort', ignoriert: 'ignoriert (Ersatzzeit)' };
 
-async function orteMenue() {
+async function orteGelerntMenue() {
   const n = await ORT.offeneNachsuchen(t => DAT.log(t));
   if (n) await info('Orte gefunden', `${n} Ort(e) wurden jetzt gefunden.`);
   for (;;) {
@@ -680,39 +1033,31 @@ async function hauptmenue() {
   for (;;) {
     const { einst } = await PLAN.laden();
     const plan = await DAT.lesen('plan.json', null);
-    const status = !einst.eingerichtet ? 'Noch nicht eingerichtet.'
+    const status = !einst.eingerichtet ? 'Noch nicht eingerichtet: bitte "Einstellungen" → "Ersteinrichtung".'
       : plan ? `Zuletzt geplant: ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))}${plan.warnText ? '\nPasst nicht: ' + plan.warnText : ''}`
         : 'Noch nie geplant.';
     const punkte = [
-      ['Jetzt planen', async () => {
-        if (!einst.eingerichtet) { await info('Erst einrichten', 'Bitte zuerst "Ersteinrichtung".'); return; }
-        if (await kalenderPruefen(einst)) PLAN.kurzbefehlStarten();
+      ['Heute', heute],
+      ['Woche', woche],
+      ['Jetzt planen (mit Fahrzeiten und Weckern)', async () => {
+        if (!einst.eingerichtet) { await info('Erst einrichten', 'Bitte "Einstellungen" → "Ersteinrichtung".'); return false; }
+        if (await kalenderPruefen(einst)) { PLAN.kurzbefehlStarten(); return true; }
+        return false;
       }],
-      ['Tagesplan', tagesplan],
-      ['Aufgaben bearbeiten', aufgabenMenue],
-      ['Geburtstage', geburtstageMenue],
-      ['Fristen', fristenMenue],
-      ['Checklisten', checklistenMenue],
-      ['Blumen', blumenMenue],
-      ['Urlaub / Ausnahmen', ausnahmenMenue],
-      ['Gelernte Orte', orteMenue],
+      ['Aufgaben', aufgabenMenue],
+      ['Extras', extrasMenue],
       ['Einstellungen', einstellungenMenue],
       ['Log', logZeigen],
-      ['Ersteinrichtung', ersteinrichtung],
-      ['Test: planen ohne Kurzbefehl (ohne Wecker)', async () => {
-        if (!(await kalenderPruefen(einst))) return;
-        const p = await PLAN.ohneKurzbefehl();
-        await info('Geplant', `${p.bloecke.length} Aufgaben-Blöcke. Wecker werden nur über den Kurzbefehl gestellt.`);
-      }],
-      ['Update laden', async () => Safari.open(`scriptable:///run/${encodeURIComponent('Planer Update')}`)],
     ];
-    const i = await auswahl('Planer', status, punkte.map(p => p[0]), 'Schließen');
+    const i = await auswahl('Planer', status, punkte.map(p2 => p2[0]), 'Schließen');
     if (i === -1) return;
     try {
       const verlassen = await punkte[i][1]();
-      if (verlassen === true || i === 0 || i === punkte.length - 1) return; // App wird verlassen
+      await DAT.logSchreiben();
+      if (verlassen === true) return; // App wird verlassen
     } catch (e) {
       await DAT.log(`FEHLER im Menü: ${e && e.stack ? e.stack : e}`);
+      await DAT.logSchreiben();
       await info('Fehler', String(e && e.message ? e.message : e));
     }
   }
