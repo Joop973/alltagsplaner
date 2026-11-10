@@ -8,6 +8,7 @@ function hole(n) {
 const D = hole('datum');
 const A = hole('ablauf');
 const F = hole('feiertage');
+const L = hole('lernen');
 
 // Zeitraum [s,e) minus belegte Zeiträume
 function abziehen(frei, belegt) {
@@ -233,8 +234,8 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
     const dauer = Number(a.dauer) * 60000;
     for (let idx = 0; idx < tage[i].frei.length; idx++) {
       const l = tage[i].frei[idx];
-      const s = Math.max(l.start, g.von);
-      if (Math.min(l.end, g.bis) - s < dauer) continue;
+      const s = L.erlaubterStart(Math.max(l.start, g.von), a.meiden);
+      if (s == null || Math.min(l.end, g.bis) - s < dauer) continue;
       if (!bleibtZuhause(s, dauer, g)) {
         // spätester Start, damit die Folge noch zuhause liegt, gibt es in derselben Lücke nicht früher – nächste Lücke
         continue;
@@ -249,6 +250,7 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
     if (!g) return null;
     const dauer = Number(a.dauer) * 60000;
     if (s < g.von || s + dauer > g.bis || !bleibtZuhause(s, dauer, g)) return null;
+    if (L.erlaubterStart(s, a.meiden) !== s) return null;
     const idx = tage[i].frei.findIndex(l => l.start <= s && s + dauer <= l.end);
     return idx < 0 ? null : belegen(i, a, idx, s);
   }

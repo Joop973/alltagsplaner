@@ -626,6 +626,36 @@ test('Stufe 3: Dienstplan-PDF teilen, Vorschau, übernehmen, Schichten im Kalend
   assert.ok(!log.includes('FEHLER'), log);
 });
 
+test('Stufe 4: Lernen, Wochenrückblick, Rückgängig', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), JSON.stringify([{ id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: '2026-11-09' }]));
+  const ev = (t) => ({ t: um(t, 18, 20).toISOString(), typ: 'erledigt', id: 'bad', geplantStart: um(t, 18).toISOString() });
+  fs.writeFileSync(u.daten('gedaechtnis.json'), JSON.stringify({ ereignisse: [ev(1), ev(5), ev(9)] }));
+  await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  let auf = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
+  assert.strictEqual(auf[0].dauer, 20);
+  const st = JSON.parse(fs.readFileSync(u.daten('lernen.json'), 'utf8'));
+  assert.strictEqual(st.gelernt[0].neu, 20);
+  const rb = u.mitteilungen.find(m => m.title === 'Wochenrückblick');
+  assert.ok(rb && rb.trigger.getDay() === 0 && rb.trigger.getHours() === 18);
+  // Rückgängig über das Modul (wie im Menü)
+  fs.writeFileSync(path.join(u.wurzel, 'zurueck.js'), "const P = importModule('planer/adapter/planung'); const st = await P.lernstandLaden(); await P.lernAktion('rueckgaengig', st.gelernt[0]); await P.abschluss();");
+  await u.script('zurueck.js', {});
+  auf = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
+  assert.strictEqual(auf[0].dauer, 30);
+  assert.ok(JSON.parse(fs.readFileSync(u.daten('lernen.json'), 'utf8')).abgelehnt['bad|dauer']);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.match(log, /Gelernt: Bad putzen dauer 30 -> 20/);
+  assert.ok(!log.includes('FEHLER'), log);
+});
+
 test('Manifest enthält alle Scripts', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   const alle = [];

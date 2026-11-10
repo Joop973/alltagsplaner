@@ -15,6 +15,7 @@ const AL = hole('core/alltag');
 const G = hole('core/gedaechtnis');
 const SO = hole('core/sonder');
 const R = hole('core/tagesrhythmus');
+const L = hole('core/lernen');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
@@ -181,10 +182,16 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   const abgehakt = await ERI.erledigteLesen(einst, log);
   await SON.erledigtMelden(abgehakt.filter(e => SON.istSonder(e.id)));
   const ueb = AK.erledigteUebernehmen(aufgabenAlt, abgehakt.filter(e => !SON.istSonder(e.id)));
-  const aufgaben = ueb.aufgaben;
+  let aufgaben = ueb.aufgaben;
   if (ueb.meldungen.length) {
     await aufgabenSpeichern(aufgaben);
     for (const m of ueb.meldungen) await log(m);
+  }
+  for (const e of abgehakt) await gedaechtnis({ typ: 'abgehakt', id: e.id }, jetzt);
+  // Einmal am Tag lernen (kleine Anpassungen automatisch, große als Vorschlag)
+  if (einst.lernen.an && z.gelerntAm !== D.ymd(jetzt)) {
+    aufgaben = await lernenAnwenden(aufgaben, jetzt);
+    z.gelerntAm = D.ymd(jetzt);
   }
   // Geburtstage, Fristen, Blumen, Checklisten
   let extra = { aufgaben: [], mitteilungen: [], checklisten: [] };
@@ -228,6 +235,15 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
     R.morgenUeberblick(kurzPlan, D.ymd(jetzt), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
     R.morgenUeberblick(kurzPlan, D.ymd(D.plusTage(jetzt, 1)), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
   ].filter(Boolean).concat(R.blockEndeMitteilungen(plan.bloecke, jetzt, einst.blockEnde));
+  // Wochenrückblick (Sonntag)
+  if (einst.lernen.an) {
+    const so = L.naechsterSonntag(jetzt, einst.lernen.rueckblick);
+    const st = await lernstandLaden();
+    if (so) {
+      const text = L.wochenrueckblick(await DAT.lesen('gedaechtnis.json', G.leer()), aufgaben, jetzt, P.faelligAm, st.vorschlaege.length);
+      rhythmus.push({ id: `planer-rueckblick-${D.ymd(so)}`, zeit: so, titel: 'Wochenrückblick', text: [text, ...st.hinweise].join('\n') });
+    }
+  }
   const entfernt = await MIT.alteEntfernen();
   const angekuendigt = await MIT.bloeckeAnkuendigen(plan.bloecke, jetzt);
   const weitere = await MIT.weitereAnkuendigen(alltag.mitteilungen.concat(rhythmus, checks, extra.mitteilungen), jetzt, angekuendigt);
@@ -293,6 +309,49 @@ async function lokaleVersion() {
     if (!f.fileExists(p)) return null;
     return JSON.parse(f.readString(p)).version || null;
   } catch (e) { return null; }
+}
+
+// ---------- Lernen ----------
+
+async function lernstandLaden() {
+  return { gelernt: [], abgelehnt: {}, vorschlaege: [], hinweise: [], ...(await DAT.lesen('lernen.json', {})) };
+}
+async function lernstandSpeichern(st) { await DAT.schreiben('lernen.json', st); }
+
+async function lernenAnwenden(aufgaben, jetzt) {
+  const st = await lernstandLaden();
+  const r = L.auswerten(await DAT.lesen('gedaechtnis.json', G.leer()), aufgaben, jetzt, st);
+  let neu = aufgaben;
+  for (const a of r.auto) {
+    neu = L.anwenden(neu, a.id, a.feld, a.neu);
+    st.gelernt.unshift({ ...a, datum: D.ymd(jetzt) });
+    await log(`Gelernt: ${a.name} ${a.feld} ${JSON.stringify(a.alt)} -> ${JSON.stringify(a.neu)} (${a.grund})`);
+  }
+  st.gelernt = st.gelernt.slice(0, 50);
+  st.vorschlaege = r.vorschlaege;
+  st.hinweise = r.hinweise;
+  await lernstandSpeichern(st);
+  if (r.auto.length) await aufgabenSpeichern(neu);
+  return neu;
+}
+
+// Vorschlag übernehmen / ablehnen, Gelerntes rückgängig machen
+async function lernAktion(art, eintrag) {
+  const st = await lernstandLaden();
+  const { aufgaben } = await laden();
+  const k = L.schluessel(eintrag.id, eintrag.feld);
+  if (art === 'uebernehmen') {
+    await aufgabenSpeichern(L.anwenden(aufgaben, eintrag.id, eintrag.feld, eintrag.neu));
+    st.gelernt.unshift({ ...eintrag, datum: D.ymd(new Date()) });
+  }
+  if (art === 'ablehnen' || art === 'rueckgaengig') st.abgelehnt[k] = D.ymd(new Date());
+  if (art === 'rueckgaengig') {
+    await aufgabenSpeichern(L.anwenden(aufgaben, eintrag.id, eintrag.feld, eintrag.alt));
+    st.gelernt = st.gelernt.filter(g => g !== eintrag && !(g.id === eintrag.id && g.feld === eintrag.feld && g.datum === eintrag.datum));
+  }
+  st.vorschlaege = st.vorschlaege.filter(v => L.schluessel(v.id, v.feld) !== k);
+  await lernstandSpeichern(st);
+  await log(`Lernen: ${art} ${eintrag.name} ${eintrag.feld}`);
 }
 
 // Neu planen ohne Kurzbefehl (gespeicherte Fahrzeiten, Wecker bleiben)
@@ -438,5 +497,5 @@ async function abschluss() { await DAT.logSchreiben(); }
 module.exports = {
   KURZBEFEHL, laden, einstellungenSpeichern, aufgabenSpeichern, zustandLaden, zustandSpeichern, medsLaden, medsSpeichern,
   phaseA, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, abfahrtMerken, heuteKeineAufgaben, rueckstandAufloesen,
-  fehler, abschluss,
+  lernstandLaden, lernAktion, fehler, abschluss,
 };

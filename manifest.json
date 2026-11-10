@@ -20,6 +20,7 @@
     "planer/core/fahrzeiten.js",
     "planer/core/feiertage.js",
     "planer/core/gedaechtnis.js",
+    "planer/core/lernen.js",
     "planer/core/orte.js",
     "planer/core/planer.js",
     "planer/core/schichten.js",

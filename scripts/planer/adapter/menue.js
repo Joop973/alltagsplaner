@@ -358,7 +358,9 @@ async function aufgabeBearbeiten(aufgaben, a) {
       `Nur in Monaten: ${a.monate && a.monate.length ? a.monate.map(m => MONATE[m]).join(', ') : 'immer'}`,
       a.aktiv === false ? 'Einschalten' : 'Ausschalten',
       'Löschen',
+      `Tageszeiten meiden: ${(a.meiden || []).join(', ') || 'keine'} (antippen = zurücksetzen)`,
     ]);
+    if (i === 12) { a.meiden = []; await PLAN.aufgabenSpeichern(aufgaben); continue; }
     if (i === -1) return;
     if (i === 0) { const t = await eingabe('Name', '', a.name); if (t) a.name = t; }
     if (i === 1) { const n = await zahlEingabe('Alle wie viele Tage?', '', a.intervall); if (n) a.intervall = n; }
@@ -400,8 +402,10 @@ async function aufgabenMenue() {
   for (;;) {
     const h = D.ymd(new Date());
     const sortiert = aufgaben.slice().sort((x, y) => PL.dringlichkeit(PL.faelligAm(y, h), h) - PL.dringlichkeit(PL.faelligAm(x, h), h));
-    const i = await auswahl('Aufgaben', 'Dringendste zuerst. Änderungen gelten beim nächsten Planen.', [...sortiert.map(aufgabeKurz), '+ Neue Aufgabe', '+ Aus Vorlage', 'Rückstand auflösen']);
+    const st = await PLAN.lernstandLaden();
+    const i = await auswahl('Aufgaben', 'Dringendste zuerst. Änderungen gelten beim nächsten Planen.', [...sortiert.map(aufgabeKurz), '+ Neue Aufgabe', '+ Aus Vorlage', 'Rückstand auflösen', `Gelernt${st.vorschlaege.length ? ` (${st.vorschlaege.length} Vorschläge)` : ''}`]);
     if (i === -1) return;
+    if (i === sortiert.length + 3) { await gelerntMenue(); const n = await PLAN.laden(); aufgaben.splice(0, aufgaben.length, ...n.aufgaben); continue; }
     if (i === sortiert.length) {
       const name = await eingabe('Neue Aufgabe', 'Name');
       if (!name) continue;
@@ -433,6 +437,37 @@ async function aufgabenMenue() {
       continue;
     }
     await aufgabeBearbeiten(aufgaben, sortiert[i]);
+  }
+}
+
+// ---------- Gelernt ----------
+
+function lernText(e) {
+  const wert = v => (Array.isArray(v) ? (v.length ? v.join(', ') : 'nichts') : v);
+  const feld = { dauer: 'Dauer (min)', intervall: 'Abstand (Tage)', meiden: 'meiden' }[e.feld] || e.feld;
+  return `${e.name}: ${feld} ${wert(e.alt)} → ${wert(e.neu)}`;
+}
+
+async function gelerntMenue() {
+  for (;;) {
+    const st = await PLAN.lernstandLaden();
+    const zeilen = [
+      ...st.vorschlaege.map(v => `Vorschlag: ${lernText(v)}`),
+      ...st.gelernt.map(g => `${D.deutschDatum(g.datum)}: ${lernText(g)}`),
+    ];
+    const nachricht = ['Der Planer lernt aus "Erledigt", "Später", "Nicht nötig" und deinen Abfahrten – erst ab 3 Beobachtungen. Antippen: übernehmen, ablehnen oder rückgängig.', ...st.hinweise].join('\n\n');
+    if (!zeilen.length) { await info('Gelernt', `${nachricht}\n\nNoch nichts gelernt.`); return; }
+    const i = await auswahl('Gelernt', nachricht, zeilen);
+    if (i === -1) return;
+    if (i < st.vorschlaege.length) {
+      const v = st.vorschlaege[i];
+      const k = await auswahl(lernText(v), v.grund, ['Übernehmen', 'Ablehnen (60 Tage nicht mehr vorschlagen)']);
+      if (k === 0) await PLAN.lernAktion('uebernehmen', v);
+      if (k === 1) await PLAN.lernAktion('ablehnen', v);
+    } else {
+      const g = st.gelernt[i - st.vorschlaege.length];
+      if (await frage('Rückgängig?', `${lernText(g)}\n${g.grund}`)) await PLAN.lernAktion('rueckgaengig', g);
+    }
   }
 }
 
@@ -680,6 +715,7 @@ async function einstellungenMenue() {
       [`Aufgaben in Erinnerungen-App (Liste "${einst.erinnerungen.liste}"): ${einst.erinnerungen.an ? 'an' : 'aus'}`, async () => { einst.erinnerungen.an = !einst.erinnerungen.an; await PLAN.einstellungenSpeichern(einst); }],
       [`Wachhund (Mitteilung, wenn der 06:00-Lauf fehlt): ${einst.wachhund.an ? 'an' : 'aus'}`, async () => { einst.wachhund.an = !einst.wachhund.an; await PLAN.einstellungenSpeichern(einst); }],
       ['Wecker, Abend und Morgen (Aufstehen, Tagesabschluss, Regen)', () => tagesrhythmusMenue(einst)],
+      [`Lernen und Wochenrückblick: ${einst.lernen.an ? 'an' : 'aus'}`, async () => { einst.lernen.an = !einst.lernen.an; await PLAN.einstellungenSpeichern(einst); }],
       ['Daten sichern / einspielen', sicherungMenue],
       ['Ersteinrichtung', ersteinrichtung],
       ['Test: planen ohne Kurzbefehl (ohne Wecker)', async () => {
