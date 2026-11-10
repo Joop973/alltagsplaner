@@ -11,6 +11,7 @@
     "planer/adapter/sonder.js",
     "planer/core/ablauf.js",
     "planer/core/aktion.js",
+    "planer/core/alltag.js",
     "planer/core/datum.js",
     "planer/core/fahrzeiten.js",
     "planer/core/feiertage.js",

@@ -23,6 +23,13 @@ function standardEinstellungen() {
       weg: ['reise', 'verreist', 'abwesend'],
     },
     wachhund: { an: true, zeit: '07:30', laufBis: '06:30' },
+    // Einkaufsliste = Erinnerungen-Liste "Einkauf": Einkaufen wird als Besorgung geplant,
+    // sobald 5 Sachen draufstehen, etwas 3 Tage wartet oder ein Eintrag mit "!" beginnt.
+    einkauf: { an: true, liste: 'Einkauf', abAnzahl: 5, abTagen: 3, dauer: 30 },
+    // Medikamente: Erinnerung zur Zeit, Nachfrage nach 30 min, Vorrat zählen, Apotheke planen
+    medikamente: { an: true, tage: 2, nachfrageMin: 30 },
+    // Müllabfuhr (Option): ganztägige Einträge aus dem abonnierten Abfallkalender
+    muell: { an: false, kalender: '', vorabend: '19:00', morgens: '' },
     verkehr: { zuhauseArbeit: 'Fahrrad', direktVonArbeit: 'Fahrrad', sonst: 'Auto' },
     regeln: {
       pauseNachHeim: 15,
@@ -62,10 +69,12 @@ function standardEinstellungen() {
 
 function standardAufgaben() {
   return [
-    { id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: null, aktiv: true },
+    { id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: null, aktiv: true,
+      schritte: ['Waschbecken', 'Dusche', 'WC', 'Spiegel', 'Boden'] },
     { id: 'saugen', name: 'Staubsaugen', intervall: 7, dauer: 20, pflicht: false, letzte: null, aktiv: true, laut: true },
     { id: 'bett', name: 'Bettwäsche wechseln', intervall: 14, dauer: 15, pflicht: true, letzte: null, aktiv: true },
-    { id: 'waesche', name: 'Wäsche waschen', intervall: 4, dauer: 15, pflicht: true, letzte: null, aktiv: true },
+    { id: 'waesche', name: 'Wäsche waschen', intervall: 4, dauer: 15, pflicht: true, letzte: null, aktiv: true,
+      folge: { name: 'Wäsche aufhängen', nachMin: 120, dauer: 15, zuhause: true } },
     { id: 'fenster', name: 'Fenster putzen', intervall: 60, dauer: 60, pflicht: false, letzte: null, aktiv: true },
   ];
 }
@@ -99,6 +108,34 @@ function standardBlumen() {
   };
 }
 
+// Vorlagen zum Antippen (Aufgaben mit monate = nur in diesen Monaten fällig)
+function vorlagenAufgaben() {
+  return [
+    { name: 'Reifen wechseln (Winter)', intervall: 365, dauer: 60, pflicht: true, monate: [10, 11], unterwegs: true },
+    { name: 'Reifen wechseln (Sommer)', intervall: 365, dauer: 60, pflicht: true, monate: [3, 4], unterwegs: true },
+    { name: 'Rauchmelder testen', intervall: 365, dauer: 15, pflicht: true },
+    { name: 'Heizung entlüften', intervall: 365, dauer: 20, pflicht: false, monate: [9, 10] },
+    { name: 'Kühlschrank sauber machen', intervall: 30, dauer: 20, pflicht: false },
+    { name: 'Handtücher wechseln', intervall: 4, dauer: 5, pflicht: false },
+    { name: 'Müll rausbringen', intervall: 3, dauer: 5, pflicht: true },
+    { name: 'Pflanzen gießen', intervall: 4, dauer: 10, pflicht: true },
+    { name: 'Bügeln', intervall: 7, dauer: 30, pflicht: false },
+    { name: 'Küche gründlich putzen', intervall: 14, dauer: 40, pflicht: false },
+  ];
+}
+
+function vorlagenFristen() {
+  return [
+    { name: 'TÜV / HU Auto', monate: 24, vorlaufWochen: [6, 2] },
+    { name: 'Kfz-Versicherung prüfen (Wechsel bis 30.11.)', datumMMTT: '11-30', monate: 12, vorlaufWochen: [6, 2] },
+    { name: 'Zahnarzt Kontrolle (Bonusheft)', monate: 12, vorlaufWochen: [4] },
+    { name: 'Personalausweis läuft ab', monate: 0, vorlaufWochen: [12, 4] },
+    { name: 'Steuererklärung', datumMMTT: '07-31', monate: 12, vorlaufWochen: [8, 2] },
+    { name: 'Handyvertrag kündigen', monate: 0, vorlaufWochen: [6, 2] },
+    { name: 'Hausrat / Haftpflicht prüfen', monate: 12, vorlaufWochen: [4] },
+  ];
+}
+
 function istObjekt(x) { return x && typeof x === 'object' && !Array.isArray(x); }
 
 // Gespeicherte Werte über Standardwerte legen (neue Einstellungen nach Updates bekommen Standard).
@@ -113,4 +150,4 @@ function zusammenfuehren(standard, gespeichert) {
   return r;
 }
 
-module.exports = { standardEinstellungen, standardAufgaben, standardChecklisten, standardBlumen, zusammenfuehren };
+module.exports = { standardEinstellungen, standardAufgaben, standardChecklisten, standardBlumen, vorlagenAufgaben, vorlagenFristen, zusammenfuehren };

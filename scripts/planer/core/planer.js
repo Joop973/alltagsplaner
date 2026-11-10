@@ -124,6 +124,7 @@ function vorziehenFuer(a, regeln) { return a.vorziehen != null ? a.vorziehen : (
 // Tage für eine Aufgabe: erlaubte Tage; lange Aufgaben zuerst an freien Tagen (bis 3 Tage nach Fälligkeit).
 function tageFuer(o, tage, regeln, tagInfo, ruhe) {
   let r = tagReihenfolge(o.faellig, tage, vorziehenFuer(o.a, regeln), o.a.bis);
+  r = r.filter(i => inSaison(o.a, tage[i].datum));
   if (tagInfo) r = r.filter(i => tagErlaubt(o.a, tagInfo[i], regeln, ruhe));
   if (tagInfo && r.length && regeln.langAb != null && Number(o.a.dauer) > regeln.langAb) {
     const grenze = r[0] + 3;
@@ -135,6 +136,12 @@ function tageFuer(o, tage, regeln, tagInfo, ruhe) {
 
 function aktivUndGueltig(a) {
   return a.aktiv !== false && Number(a.dauer) > 0 && (a.einmalig || Number(a.intervall) > 0);
+}
+
+// Saisonale Aufgaben (monate: [10, 11]): nur in diesen Monaten planen
+function inSaison(a, datum) {
+  if (!a.monate || !a.monate.length) return true;
+  return a.monate.includes(Number(datum.slice(5, 7)));
 }
 
 function rangVergleich(x, y) {
@@ -155,7 +162,8 @@ function nachId(liste) {
 // aufgaben: [{id,name,intervall,dauer,pflicht,letzte,basis,aktiv,nichtVor,laut,einmalig,faellig,bis}]
 // fest:   [{aufgabeId, start, end}] vom Nutzer im Kalender verschobene Blöcke – gelten, wie sie sind
 // vorher: [{aufgabeId, start, end}] Blöcke des letzten Plans – bleiben, solange sie passen (Planruhe)
-function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab }) {
+// aufenthalte: Zeiten zuhause (für Aufgaben mit Folgeaufgabe, z. B. Wäsche: danach noch zuhause sein)
+function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab, aufenthalte }) {
   if (!tagesLuecken.length) return { bloecke: [], warnungen: [] };
   const tage = tagesLuecken.map(t => ({ datum: t.datum, frei: t.luecken.map(l => ({ ...l })), minuten: 0 }));
   const heute = tage[0].datum, letzter = tage[tage.length - 1].datum;
@@ -168,7 +176,7 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
 
   const block = (o, s, e, extra) => ({
     aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig,
-    einmalig: !!o.a.einmalig, start: new Date(s), end: new Date(e), ...extra,
+    einmalig: !!o.a.einmalig, start: new Date(s), end: new Date(e), schritte: o.a.schritte, ...extra,
   });
   const naechste = (o, datum) => {
     if (o.a.einmalig) return;
@@ -196,6 +204,12 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
     let von = a.nichtVor ? new Date(a.nichtVor).getTime() : -Infinity, bis = Infinity;
     const rf = ruheFenster(a, tag.datum, ruhe);
     if (rf) { von = Math.max(von, rf.von); bis = rf.bis; }
+    // Folgeaufgabe zuhause (Wäsche aufhängen): Folge muss vor Tagesende und vor dem Losfahren liegen
+    if (a.folge && a.folge.zuhause) {
+      const extra = (Number(a.folge.nachMin) + Number(a.folge.dauer || 0)) * 60000;
+      bis = Math.min(bis, D.mitUhrzeit(D.ausYmd(tag.datum), regeln.tagEnde).getTime() - extra + Number(a.dauer) * 60000);
+      return { von, bis, folgeExtra: extra };
+    }
     return { von, bis };
   }
   function belegen(i, a, idx, s) {
@@ -207,6 +221,12 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
     tag.minuten += Number(a.dauer);
     return { start: s, end: s + dauer };
   }
+  // Liegt [s, s+dauer+folgeExtra] ganz in einem Aufenthalt zuhause?
+  function bleibtZuhause(s, dauer, g) {
+    if (!g.folgeExtra || !aufenthalte) return true;
+    const e = s + dauer + g.folgeExtra;
+    return aufenthalte.some(x => x.start <= s && x.end >= e);
+  }
   function suchen(i, a) {
     const g = grenzen(i, a);
     if (!g) return null;
@@ -215,6 +235,10 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
       const l = tage[i].frei[idx];
       const s = Math.max(l.start, g.von);
       if (Math.min(l.end, g.bis) - s < dauer) continue;
+      if (!bleibtZuhause(s, dauer, g)) {
+        // spätester Start, damit die Folge noch zuhause liegt, gibt es in derselben Lücke nicht früher – nächste Lücke
+        continue;
+      }
       return belegen(i, a, idx, s);
     }
     return null;
@@ -224,7 +248,7 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, v
     const g = grenzen(i, a);
     if (!g) return null;
     const dauer = Number(a.dauer) * 60000;
-    if (s < g.von || s + dauer > g.bis) return null;
+    if (s < g.von || s + dauer > g.bis || !bleibtZuhause(s, dauer, g)) return null;
     const idx = tage[i].frei.findIndex(l => l.start <= s && s + dauer <= l.end);
     return idx < 0 ? null : belegen(i, a, idx, s);
   }
@@ -350,7 +374,7 @@ function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln, tagInfo, ruhe }) {
     }
     bloecke.push({
       aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig, einmalig: !!o.a.einmalig,
-      start: new Date(s), end: new Date(e), unterwegs: gewaehlt.art,
+      start: new Date(s), end: new Date(e), unterwegs: gewaehlt.art, schritte: o.a.schritte,
     });
   }
   return { bloecke, rest, fahrten, aufenthalte, belegt };
@@ -381,7 +405,7 @@ function planen({ termine, aufgaben, einst, fahrzeit, jetzt, sperrTage, fest, vo
   const tagesLuecken = freieLuecken({ aufenthalte: u.aufenthalte, termine: ablauf.termine.concat(u.belegt), jetzt, regeln, tagInfo });
   const normal = aufgabenPlanen({
     aufgaben: aufgaben.filter(a => !istUnterwegs(a)).concat(u.rest),
-    tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab: D.aufrunden5(jetzt).getTime(),
+    tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab: D.aufrunden5(jetzt).getTime(), aufenthalte: u.aufenthalte,
   });
   const bloecke = u.bloecke.concat(normal.bloecke).sort((x, y) => x.start - y.start);
   const wecker = weckerListe(ablauf.fahrten, jetzt, regeln);
@@ -389,6 +413,6 @@ function planen({ termine, aufgaben, einst, fahrzeit, jetzt, sperrTage, fest, vo
 }
 
 module.exports = {
-  abziehen, tagInfoBauen, freieLuecken, faelligAm, dringlichkeit, dringlichkeitText, tagReihenfolge,
+  inSaison, abziehen, tagInfoBauen, freieLuecken, faelligAm, dringlichkeit, dringlichkeitText, tagReihenfolge,
   aufgabenPlanen, unterwegsPlanen, vorschlaege, weckerListe, planen,
 };
