@@ -623,6 +623,22 @@ async function tagesrhythmusMenue(einst) {
   }
 }
 
+async function dienstplanMenue(einst) {
+  for (;;) {
+    const dp = einst.schichten.dienstplan;
+    const i = await auswahl('Dienstplan-PDF', `Am schnellsten: PDF öffnen → Teilen → Scriptable → "Planer Dienstplan". ${dp && dp.von ? `Eingelesen: ${D.deutschDatum(dp.von)} – ${D.deutschDatum(dp.bis)}.` : 'Noch keiner eingelesen.'} Danach gilt wieder das A/B-Muster.`, [
+      'PDF auswählen und einlesen', `Name im Dienstplan: ${(einst.dienstplan && einst.dienstplan.name) || '(noch nicht gesetzt)'}`, 'Eingelesenen Dienstplan löschen',
+    ]);
+    if (i === -1) return;
+    if (i === 0) { const DPA = hole('adapter/dienstplan'); if (await DPA.importieren(null)) return; const n = await PLAN.laden(); Object.assign(einst, n.einst); }
+    if (i === 1) {
+      const t = await eingabe('Name im Dienstplan', 'So, wie er in der ersten Spalte steht.', (einst.dienstplan && einst.dienstplan.name) || '');
+      if (t) { einst.dienstplan = { ...(einst.dienstplan || {}), name: t }; await PLAN.einstellungenSpeichern(einst); }
+    }
+    if (i === 2 && await frage('Löschen?', 'Dann gilt wieder nur das A/B-Muster.')) { delete einst.schichten.dienstplan; await PLAN.einstellungenSpeichern(einst); }
+  }
+}
+
 async function sicherungMenue() {
   const i = await auswahl('Daten sichern', 'Alle Einstellungen, Aufgaben, Orte usw. als eine Datei. iCloud sichert zusätzlich automatisch.', ['Sicherung speichern', 'Sicherung einspielen']);
   if (i === 0) {
@@ -647,6 +663,7 @@ async function einstellungenMenue() {
       ['Zeiten und Regeln', () => regelnMenue(einst)],
       ['Urlaub / krank / abwesend', ausnahmenMenue],
       ['Einzelne Schicht ändern', () => schichtAendernMenue(einst)],
+      [`Dienstplan-PDF${sch.dienstplan && sch.dienstplan.bis ? ` (bis ${D.deutschDatum(sch.dienstplan.bis)})` : ''}`, () => dienstplanMenue(einst)],
       ['Schichtzeiten (Woche A/B)', () => schichtzeitenMenue(einst)],
       [`Schichtwoche neu festlegen (jetzt: Woche ${sch.referenzMontag ? SCH.wochenTyp(new Date(), sch.referenzMontag, sch.referenzTyp) : '?'})`, async () => { if (await wocheFestlegen(einst)) await PLAN.einstellungenSpeichern(einst); }],
       ['Ganztägige Termine erkennen (Urlaub, krank …)', () => stichwortMenue(einst)],

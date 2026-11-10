@@ -45,8 +45,15 @@ function schichtenErzeugen(von, tage, sch, extra) {
       if (z) liste.push({ datum: s, typ: 'geändert', start: D.mitUhrzeit(tag, z.von), end: D.mitUhrzeit(tag, z.bis) });
       continue;
     }
-    if (!sch.referenzMontag) continue;
     if (frei.has(s)) continue;
+    // Dienstplan aus der PDF geht vor dem Muster (null = frei laut Plan)
+    const dp = sch.dienstplan && sch.dienstplan.tage;
+    if (dp && Object.prototype.hasOwnProperty.call(dp, s)) {
+      const z = zeitspanne(dp[s]);
+      if (z) liste.push({ datum: s, typ: 'Dienstplan', start: D.mitUhrzeit(tag, z.von), end: D.mitUhrzeit(tag, z.bis) });
+      continue;
+    }
+    if (!sch.referenzMontag) continue;
     if (F.freierTag(s, sch.extraFrei)) continue;
     if (ausnahmeAm(s, sch.ausnahmen)) continue;
     const typ = wochenTyp(tag, sch.referenzMontag, sch.referenzTyp);

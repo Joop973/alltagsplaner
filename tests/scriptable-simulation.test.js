@@ -583,6 +583,49 @@ test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, 
   assert.match(log, /Regen 80 %: Fr 13\.11\. 06:51 Auto statt Rad zu Arbeit/);
 });
 
+test('Stufe 3: Dienstplan-PDF teilen, Vorschau, übernehmen, Schichten im Kalender', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(9, 9) }); // Montag
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+    schichten: { referenzMontag: '2026-11-09', referenzTyp: 'A' },
+  }));
+  // ausgedachte Tabelle: Testperson Mo 08:00-16:00, Di frei, Mi 08:00-12:30-13:00-17:30
+  const items = [{ s: 'Dienstplan November 2026', x: 10, y: 800, w: 100 }];
+  ['9.11', '10.11', '11.11'].forEach((t, i) => items.push({ s: t, x: 100 + i * 40 - 8, y: 760, w: 16 }));
+  items.push({ s: 'Testperson', x: 10, y: 739, w: 50 });
+  [['08:00', '16:00'], [], ['08:00', '12:30', '13:00', '17:30']].forEach((z, i) => z.forEach((x, k) => items.push({ s: x, x: 90 + i * 40, y: 740 - k * 10, w: 20 })));
+  let geladen = 0;
+  u.ctx.Request = class { constructor(url) { this.url = url; } async loadString() { geladen++; this.response = { statusCode: 200 }; return 'x'.repeat(200000); } async loadJSON() { return {}; } };
+  u.ctx.Data = { fromFile: () => ({ toBase64String: () => 'UERG' }) };
+  u.ctx.WebView = class { async loadHTML() {} async evaluateJavaScript(js, asynchron) { return asynchron ? JSON.stringify(items) : 0; } };
+  const antworten = [0, 0, 0]; // Name OK, Übernehmen, Info OK
+  const gezeigt = [];
+  u.ctx.Alert = class {
+    constructor() { this.felder = []; }
+    addAction() {} addCancelAction() {}
+    addTextField() { this.felder.push('Testperson'); return {}; }
+    textFieldValue(i) { return this.felder[i]; }
+    async presentAlert() { gezeigt.push(`${this.title}: ${this.message || ''}`); return antworten.length ? antworten.shift() : -1; }
+  };
+  await u.script('Planer Dienstplan.js', { fileURLs: ['file:///privat/Dienstplan.pdf'] });
+  assert.strictEqual(geladen, 2, 'Leseprogramm einmal geladen (2 Dateien)');
+  assert.ok(gezeigt.some(g => g.startsWith('Dienstplan 09.11.2026 – 11.11.2026') && g.includes('Di 10.11.  frei') && g.includes('Mi 11.11.  08:00-17:30')), gezeigt.join('\n'));
+  const arbeit = u.termine.filter(t => t.calendar.title === 'Arbeit' && t.startDate.getMonth() === 10).map(t => `${t.startDate.getDate()} ${t.startDate.getHours()}-${t.endDate.getHours()}:${t.endDate.getMinutes()}`);
+  assert.ok(arbeit.includes('9 8-16:0') && !arbeit.some(x => x.startsWith('10 ')) && arbeit.includes('11 8-17:30'), arbeit.join(' | '));
+  assert.ok(arbeit.includes('12 7-16:0'), 'nach dem Plan: Muster (Woche A)');
+  const e = JSON.parse(fs.readFileSync(u.daten('einstellungen.json'), 'utf8'));
+  assert.strictEqual(e.dienstplan.name, 'Testperson');
+  // zweiter Import: Leseprogramm liegt schon da
+  antworten.push(0, 0);
+  await u.script('Planer Dienstplan.js', { fileURLs: ['/privat/Dienstplan.pdf'] });
+  assert.strictEqual(geladen, 2);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
+});
+
 test('Manifest enthält alle Scripts', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   const alle = [];

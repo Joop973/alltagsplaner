@@ -68,7 +68,7 @@ async function muellLesen(einst, jetzt) {
 async function schichtenSchreiben(einst, jetzt, log, extra) {
   const sch = einst.schichten;
   const rec = (extra && extra.rec) || {};
-  if (!sch.referenzMontag && !(sch.aenderungen || []).length) { await log('Schichten: Woche A/B noch nicht festgelegt.'); return rec; }
+  if (!sch.referenzMontag && !(sch.aenderungen || []).length && !(sch.dienstplan && sch.dienstplan.von)) { await log('Schichten: Woche A/B noch nicht festgelegt.'); return rec; }
   const cal = await finde(einst.kalender.arbeit);
   if (!cal) { await log(`Schichten: Kalender "${einst.kalender.arbeit}" fehlt.`); return rec; }
   const tage = (sch.wochen || 8) * 7;
@@ -89,7 +89,7 @@ async function schichtenSchreiben(einst, jetzt, log, extra) {
     e.startDate = s.start;
     e.endDate = s.end;
     e.location = ort;
-    e.notes = `${MARKE_SCHICHT} (${s.typ === 'geändert' ? 'geändert' : 'Woche ' + s.typ}) – vom Planer. Du kannst den Termin hier ändern oder löschen, der Planer lässt ihn dann so.`;
+    e.notes = `${MARKE_SCHICHT} (${s.typ === 'geändert' || s.typ === 'Dienstplan' ? s.typ : 'Woche ' + s.typ}) – vom Planer. Du kannst den Termin hier ändern oder löschen, der Planer lässt ihn dann so.`;
     await e.save();
   }
   await log(`Schichten: ${r.anlegen.length} neu, ${r.loeschen.length} entfernt${r.hand.length ? `, ${r.hand.length} von Hand geändert (bleiben)` : ''}${r.geleert ? ', Kalender war leer: neu aufgebaut' : ''}.`);
