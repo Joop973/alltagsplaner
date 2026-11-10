@@ -69,3 +69,34 @@ Bewusst weggelassen: Punkte und Spiele, Familienfreigabe, Pomodoro-Timer, eigene
 30. Schnell eintippen in der App mit derselben Verarbeitung.
 31. Verstanden werden: Erledigt, Später, Heute nicht, neue Aufgabe, Termin (Kalender wird beim ersten Mal gewählt), Urlaub/frei/krank, Frist, Geburtstag, Besorgung (unterwegs), "Heute keine Aufgaben", Notiz für den Planer.
 32. Fallback: Gibt die Claude-Aktion in Kurzbefehlen ihre Antwort nicht sauber weiter, Claude über Zugangsschlüssel (Cent-Beträge, Schlüssel nur auf dem iPhone).
+
+## Extras Runde 2 (Vorschläge vom 10.11.2026, noch nicht entschieden)
+
+Grundlage: App-Store-Rezensionen und Testberichte zu Putzplan-, Schicht-, Planer- und Geburtstags-Apps.
+Echte Forenbeiträge hat die Suche kaum geliefert. "Eigene Idee" = nicht aus Rezensionen belegt.
+
+### A – empfohlen (hoher Nutzen, kein zusätzlicher Aufbau am iPhone außer Nr. 33)
+
+33. Müllabfuhr: Abfallkalender des Entsorgers in der Kalender-App abonnieren. Der Planer erinnert am Vorabend und morgens vor der Abfahrt ("Morgen: Gelbe Tonne"). (iPhone-Kalender kann das bei Abos nicht gut.)
+34. Verschobene Blöcke gelten: Wer einen Planer-Block in der Kalender-App verschiebt, legt ihn damit fest. Der Planer baut den Rest darum herum. Dazu "Planruhe": Beim Neuplanen bleiben Blöcke an ihrer Zeit, solange sie noch passen. (Häufigste Kritik an Motion: verschiebt ständig alles, hält sich nicht an Änderungen.)
+35. Einzelne Schicht ändern: "Heute bis 17:30", Überstunden, Tausch. In der App und per Sprache. Von Hand geänderte Schicht-Termine werden nicht mehr überschrieben. (Kritik an Schicht-Apps: einzelne Schicht lässt sich nicht anpassen.)
+36. Abwesend (verreist) von–bis: keine Aufgaben, keine Mitteilungen. Danach Aufholplan: Rückstand wird nach Dringlichkeit über die Tage verteilt, dazu der Knopf "Alles als erledigt werten". Gleiches nach Krankheit. (Tody: Rückstand nach Urlaub ist ein häufiger Grund aufzuhören.)
+37. "Noch sauber": Aufgabe überspringen, ohne sie als erledigt zu zählen. Der Planer lernt daraus einen längeren Abstand. (Wunsch aus Tody-Rezensionen.)
+38. Folgeaufgaben: z. B. Wäsche aufhängen 2 Std. nach "Wäsche waschen erledigt", erinnert bis zur Bestätigung (höchstens 3-mal). Bedingung: Wäsche nur starten, wenn ich danach noch zuhause bin. (Vergessene Wäsche ist ein Dauerthema.)
+39. Ruhezeiten (eigene Idee): Laute Aufgaben wie Staubsaugen nicht an Sonn- und Feiertagen und nur 08–20 Uhr. An freien Tagen Aufgaben erst ab einer einstellbaren Uhrzeit. Besorgungen nie an Sonn- und Feiertagen (Läden zu – das ist im jetzigen Stand ein Fehler).
+40. Terminprüfung (eigene Idee): Warnung, wenn die Fahrzeit zwischen zwei Terminen nicht reicht oder sich Termine überschneiden. Termin ohne Ort, dessen Titel schon einmal einen Ort hatte ("Training"): Ort wird übernommen.
+41. "Ich habe jetzt 15 Minuten": Knopf im Heute-Bildschirm, schlägt die dringendste passende Aufgabe vor. (Tody-Prinzip: zeig mir, was jetzt dran ist.)
+42. Vorlagen (eigene Idee): Fristen zum Antippen (TÜV, Kfz-Versicherung wechseln bis 30.11., Zahnarzt-Kontrolle, Ausweis, Steuererklärung) und saisonale Aufgaben mit Monaten (Reifenwechsel, Rauchmelder testen, Heizung entlüften).
+
+### B – später möglich
+
+43. Wetterabhängige Aufgaben: Fenster putzen nicht bei Regen oder Frost.
+44. Besuch-Modus: "Besuch am Samstag" zieht Putzaufgaben auf die Tage davor.
+45. Geschenkideen-Notiz je Person, erscheint in der Geschenk-Erinnerung.
+46. "Warum hier?": kurze Begründung je Block.
+47. Vorlesen: "Hey Siri, Planer heute" liest den Tag vor.
+48. Nächste Geburtstage im Woche-Bildschirm.
+
+### C – nicht bauen
+
+Einkaufsliste (Erinnerungen-App kann das mit Ort schon), Medikamente (Health-App), Essensplan, Finanzen, Familienfreigabe, Punkte und Ranglisten.
