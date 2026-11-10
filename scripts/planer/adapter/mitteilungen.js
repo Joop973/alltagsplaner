@@ -64,6 +64,13 @@ async function weitereAnkuendigen(weitere, jetzt, schonGeplant) {
     if (w.aktion && w.aktion.art === 'folge') {
       m.addAction('Erledigt', url({ aktion: 'folgeok', id: w.aktion.id }));
     }
+    if (w.aktion && w.aktion.art === 'abschluss') {
+      m.addAction('Alles erledigt', url({ aktion: 'allesok', ids: w.aktion.ids.join(',') }));
+    }
+    if (w.aktion && w.aktion.art === 'blockende') {
+      m.addAction('Erledigt', url({ aktion: 'erledigt', id: w.aktion.id, ende: w.aktion.ende }));
+      m.addAction('Später', url({ aktion: 'spaeter', id: w.aktion.id, ende: w.aktion.ende }));
+    }
     await m.schedule();
     n++;
   }

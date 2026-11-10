@@ -14,6 +14,7 @@ const T = hole('core/tage');
 const AL = hole('core/alltag');
 const G = hole('core/gedaechtnis');
 const SO = hole('core/sonder');
+const R = hole('core/tagesrhythmus');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
@@ -114,6 +115,38 @@ async function phaseB(text) {
   return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length };
 }
 
+// Wetter für Zuhause (Open-Meteo, ohne Anmeldung). Lage auf ca. 1 km gerundet, 2 Stunden gemerkt.
+async function wetterLaden(einst, jetzt, z) {
+  if (!einst.regen.an || !einst.orte.zuhause.adresse) return () => null;
+  try {
+    const adr = einst.orte.zuhause.adresse;
+    if (!z.heimKoord || z.heimKoord.adresse !== adr) {
+      const g = (await Location.geocode(adr))[0];
+      if (!g || !g.location) { await log('WARNUNG Wetter: Adresse Zuhause nicht gefunden.'); return () => null; }
+      z.heimKoord = { adresse: adr, lat: R.runden(g.location.latitude), lon: R.runden(g.location.longitude) };
+    }
+    const alt = z.wetter;
+    if (!alt || jetzt - new Date(alt.abgerufen) > 2 * 3600000) {
+      const r = new Request(R.wetterUrl(z.heimKoord.lat, z.heimKoord.lon));
+      r.timeoutInterval = 10;
+      z.wetter = { abgerufen: jetzt.toISOString(), daten: await r.loadJSON() };
+    }
+    return R.regenFunktion(z.wetter.daten);
+  } catch (e) {
+    await log(`WARNUNG Wetter nicht verfügbar: ${e}`);
+    return z.wetter ? R.regenFunktion(z.wetter.daten) : () => null;
+  }
+}
+
+// Heute schon erledigte Aufgaben (für den Tagesabschluss)
+async function erledigtHeute(jetzt, aufgaben) {
+  const heute = D.ymd(jetzt);
+  const ged = await DAT.lesen('gedaechtnis.json', G.leer());
+  const ids = new Set(ged.ereignisse.filter(e => e.t.slice(0, 10) === jetzt.toISOString().slice(0, 10) && ['erledigt', 'nichtnoetig', 'abgehakt'].includes(e.typ)).map(e => e.id));
+  for (const a of aufgaben) if (a.letzte === heute) ids.add(a.id);
+  return ids;
+}
+
 // Einkauf, Medikamente, Müll, Folgeaufgaben
 async function alltagVorbereiten(einst, jetzt, z) {
   const heute = D.ymd(jetzt);
@@ -175,18 +208,29 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   const bestehend = await KAL.planerBloeckeLesen(einst, jetzt);
   const fest = bestehend.filter(b => b.fest);
   const vorher = ((await DAT.lesen('plan.json', {})).bloecke || []);
+  const regen = await wetterLaden(einst, jetzt, z);
   const plan = P.planen({
     termine, aufgaben: aufgaben.concat(extra.aufgaben, alltagAufgaben), einst, jetzt,
-    fahrzeit: k => F.cacheWert(cache, k), sperrTage, fest, vorher,
+    fahrzeit: k => F.cacheWert(cache, k), sperrTage, fest, vorher, regen,
   });
+  const aufsteh = R.aufstehWecker(plan.ablauf.fahrten, jetzt, einst.regeln, einst.aufstehen);
+  plan.wecker = plan.wecker.concat(aufsteh).sort((a, b) => new Date(a.zeitpunkt) - new Date(b.zeitpunkt));
+  for (const f of plan.ablauf.fahrten) if (f.regen != null) await log(`Regen ${f.regen} %: ${D.kurz(new Date(f.abfahrt))} ${D.hm(new Date(f.abfahrt))} ${f.modus} statt Rad zu ${f.zielName}`);
   const terminWarn = AL.terminWarnungen(plan.ablauf);
   await KAL.planerSchreiben(einst, plan, jetzt, log);
   await ERI.schreiben(einst, plan.bloecke, jetzt, log);
   const checks = SO.checklistenFuer(plan.ablauf.fahrten, extra.checklisten, jetzt, einst.regeln.ruheVorAbfahrt);
   if (checks.length) await log(`Checklisten: ${checks.map(c => `${D.kurz(new Date(c.zeit))} ${D.hm(new Date(c.zeit))} ${c.titel}`).join(', ')}`);
+  // Tagesabschluss, Morgen-Überblick (heute und morgen), Hinweis am Blockende
+  const kurzPlan = { bloecke: plan.bloecke, fahrten: plan.ablauf.fahrten, termine: plan.ablauf.termine, tagInfo: plan.tagInfo };
+  const rhythmus = [
+    R.tagesabschluss(kurzPlan, jetzt, einst.abschluss, einst.aufstehen, await erledigtHeute(jetzt, aufgaben)),
+    R.morgenUeberblick(kurzPlan, D.ymd(jetzt), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
+    R.morgenUeberblick(kurzPlan, D.ymd(D.plusTage(jetzt, 1)), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
+  ].filter(Boolean).concat(R.blockEndeMitteilungen(plan.bloecke, jetzt, einst.blockEnde));
   const entfernt = await MIT.alteEntfernen();
   const angekuendigt = await MIT.bloeckeAnkuendigen(plan.bloecke, jetzt);
-  const weitere = await MIT.weitereAnkuendigen(alltag.mitteilungen.concat(checks, extra.mitteilungen), jetzt, angekuendigt);
+  const weitere = await MIT.weitereAnkuendigen(alltag.mitteilungen.concat(rhythmus, checks, extra.mitteilungen), jetzt, angekuendigt);
   await MIT.wachhundStellen(einst.wachhund, jetzt, `${D.kurz(jetzt)} ${D.hm(jetzt)}`);
   await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} Aufgaben + ${weitere} weitere geplant.`);
 
@@ -295,6 +339,21 @@ async function aktion(q) {
     return;
   }
 
+  if (q.aktion === 'allesok') {
+    const ids = String(q.ids || '').split(',').filter(Boolean);
+    const { aufgaben } = await laden();
+    let neu = aufgaben;
+    for (const id of ids) {
+      if (SON.istSonder(id)) await SON.aktion({ aktion: 'erledigt', id }, jetzt);
+      else neu = AK.aktionAnwenden(neu, { aktion: 'erledigt', id }, jetzt).aufgaben;
+      await gedaechtnis({ typ: 'erledigt', id, quelle: 'tagesabschluss' }, jetzt);
+    }
+    await aufgabenSpeichern(neu);
+    await log(`Tagesabschluss: ${ids.length} als erledigt markiert.`);
+    await neuPlanen();
+    return;
+  }
+
   const vorher = await DAT.lesen('plan.json', {});
   const block = G.passenderBlock(vorher.bloecke, q.id, jetzt);
   if (SON.istSonder(q.id)) {
@@ -335,6 +394,22 @@ async function gedaechtnis(ereignis, jetzt) {
   await DAT.schreiben('gedaechtnis.json', g);
 }
 
+// Automation "Beim Verlassen von Zuhause": echte Abfahrt merken (für das Lernen)
+async function abfahrtMerken() {
+  const jetzt = new Date();
+  const plan = await DAT.lesen('plan.json', {});
+  const geplant = (plan.fahrten || [])
+    .filter(f => f.vonArt === 'zuhause')
+    .map(f => ({ f, abstand: Math.abs(new Date(f.abfahrt) - jetzt) }))
+    .sort((a, b) => a.abstand - b.abstand)[0];
+  const passt = geplant && geplant.abstand < 90 * 60000 ? geplant.f : null;
+  await gedaechtnis({
+    typ: 'abfahrt', ziel: passt ? passt.zielName : null, modus: passt ? passt.modus : null,
+    geplant: passt ? new Date(passt.abfahrt).toISOString() : null,
+  }, jetzt);
+  await log(passt ? `Abfahrt zu ${passt.zielName}: geplant ${D.hm(new Date(passt.abfahrt))}, tatsächlich ${D.hm(jetzt)}.` : `Abfahrt ${D.hm(jetzt)} (keine geplante Fahrt in der Nähe).`);
+}
+
 // "Heute keine Aufgaben" an/aus
 async function heuteKeineAufgaben(an) {
   const z = await zustandLaden();
@@ -362,6 +437,6 @@ async function abschluss() { await DAT.logSchreiben(); }
 
 module.exports = {
   KURZBEFEHL, laden, einstellungenSpeichern, aufgabenSpeichern, zustandLaden, zustandSpeichern, medsLaden, medsSpeichern,
-  phaseA, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, heuteKeineAufgaben, rueckstandAufloesen,
+  phaseA, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, abfahrtMerken, heuteKeineAufgaben, rueckstandAufloesen,
   fehler, abschluss,
 };

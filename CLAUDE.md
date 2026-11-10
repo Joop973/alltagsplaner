@@ -86,7 +86,7 @@ per Mitteilung erinnert und vor jeder Abfahrt einen Wecker stellt.
 Version 1 (Abschnitte 1–7) fertig. Version 2 (Fragerunde 09.11.2026), in dieser Reihenfolge:
 1. Geburtstage (fertig), 2. Fristen (fertig), 3. Checklisten (fertig), 4. Blumen (fertig),
 5. Orte lernen (fertig, einfache Mischung), 6. Dienstplan-PDF-Import (offen), 7. Spracheingabe (offen).
-Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig (11.11.2026). Offen: Stufe 2 Alltag (Aufstehwecker, Tagesabschluss, Regen, Widget), Stufe 3 PDF, Stufe 4 Lernen, Stufe 5 Sprache (über Claude-App-Aktion "Claude fragen", vorhanden).
+Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig, Stufe 2 fertig (11.11.2026). Offen: Stufe 3 PDF, Stufe 4 Lernen, Stufe 5 Sprache (über Claude-App-Aktion "Claude fragen", vorhanden).
 
 ## Arbeitsweise
 
@@ -149,3 +149,4 @@ Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig (11.11.2026). Offen:
 - Terminprüfung (Fahrzeit reicht nicht), Ort aus Titel (nach 2 gleichen Orten), Vorlagen (Aufgaben, Fristen), Saison (monate).
 - Wachhund 07:30, Update-Hinweis (planer/version.json vom Update-Script, Manifest-Version erhöhen!), Log gebündelt, Sicherung über DocumentPicker.
 - KI: iPhone 15 ohne Apple Intelligence. Claude-App bietet in Kurzbefehlen "Claude fragen" (Screenshot 11.11.) -> Spracheingabe darüber.
+- Stufe 2: Aufstehwecker (Planer: Aufstehen, 60 min vor erster Abfahrt vor 10:00, über den bestehenden Kurzbefehl), Tagesabschluss 20:30 (offen + Aufstehen + Bettzeit 8 Std., Knopf "Alles erledigt"), Morgen-Überblick zur Aufstehzeit, Regen ab 60 % = Auto statt Rad (Open-Meteo, Lage gerundet in zustand.heimKoord, Wetter 2 Std. gemerkt; Phase a fragt zu jeder Rad-Strecke die Auto-Strecke mit ab), Widget "Planer Widget" (Home + Sperrbildschirm), Script "Planer Abfahrt" für Automation "Verlassen" (Gedächtnis), Hinweis am Blockende (Option, aus).

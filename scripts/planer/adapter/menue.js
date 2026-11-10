@@ -589,6 +589,40 @@ async function schichtAendernMenue(einst) {
   }
 }
 
+async function tagesrhythmusMenue(einst) {
+  for (;;) {
+    const a = einst.aufstehen;
+    const i = await auswahl('Wecker, Abend und Morgen', '', [
+      `Aufstehwecker: ${a.an ? 'an' : 'aus'}`,
+      `Aufstehen … min vor der ersten Abfahrt: ${a.vorlauf}`,
+      `Nur wenn die erste Abfahrt vor: ${a.nurVor}`,
+      `Schlafdauer für die Bettzeit: ${a.schlafStunden} Std.`,
+      `Tagesabschluss: ${einst.abschluss.an ? `an, ${einst.abschluss.zeit}` : 'aus'}`,
+      `Morgen-Überblick: ${einst.morgen.an ? 'an' : 'aus'}`,
+      `Regen: ${einst.regen.an ? `Auto statt Rad ab ${einst.regen.schwelle} %` : 'aus'}`,
+      `Hinweis am Ende eines Blocks (Option): ${einst.blockEnde.an ? 'an' : 'aus'}`,
+    ]);
+    if (i === -1) return;
+    if (i === 0) a.an = !a.an;
+    if (i === 1) { const n = await zahlEingabe('Minuten vor der Abfahrt', '', a.vorlauf); if (n) a.vorlauf = n; }
+    if (i === 2) { const t = await uhrzeitEingabe('Nur vor', a.nurVor); if (t) a.nurVor = t; }
+    if (i === 3) { const n = await zahlEingabe('Schlafdauer (Stunden)', '', a.schlafStunden); if (n) a.schlafStunden = n; }
+    if (i === 4) {
+      const k = await auswahl('Tagesabschluss', 'Offene Aufgaben von heute, Aufstehen und Bettzeit für morgen.', [einst.abschluss.an ? 'Ausschalten' : 'Einschalten', `Uhrzeit: ${einst.abschluss.zeit}`]);
+      if (k === 0) einst.abschluss.an = !einst.abschluss.an;
+      if (k === 1) { const t = await uhrzeitEingabe('Tagesabschluss um', einst.abschluss.zeit); if (t) einst.abschluss.zeit = t; }
+    }
+    if (i === 5) einst.morgen.an = !einst.morgen.an;
+    if (i === 6) {
+      const k = await auswahl('Regen', 'Wetter von Open-Meteo.com (kostenlos). Dafür geht die Lage deines Zuhauses, auf ca. 1 km gerundet, an den Wetterdienst.', [einst.regen.an ? 'Ausschalten' : 'Einschalten', `Ab Regenwahrscheinlichkeit: ${einst.regen.schwelle} %`]);
+      if (k === 0) einst.regen.an = !einst.regen.an;
+      if (k === 1) { const n = await zahlEingabe('Ab wie viel Prozent?', '', einst.regen.schwelle); if (n != null) einst.regen.schwelle = Math.min(100, n); }
+    }
+    if (i === 7) einst.blockEnde.an = !einst.blockEnde.an;
+    await PLAN.einstellungenSpeichern(einst);
+  }
+}
+
 async function sicherungMenue() {
   const i = await auswahl('Daten sichern', 'Alle Einstellungen, Aufgaben, Orte usw. als eine Datei. iCloud sichert zusätzlich automatisch.', ['Sicherung speichern', 'Sicherung einspielen']);
   if (i === 0) {
@@ -628,6 +662,7 @@ async function einstellungenMenue() {
       [`Fahrten im Kalender "Planer": ${einst.kalender.fahrtenEintragen ? 'an' : 'aus'}`, async () => { einst.kalender.fahrtenEintragen = !einst.kalender.fahrtenEintragen; await PLAN.einstellungenSpeichern(einst); }],
       [`Aufgaben in Erinnerungen-App (Liste "${einst.erinnerungen.liste}"): ${einst.erinnerungen.an ? 'an' : 'aus'}`, async () => { einst.erinnerungen.an = !einst.erinnerungen.an; await PLAN.einstellungenSpeichern(einst); }],
       [`Wachhund (Mitteilung, wenn der 06:00-Lauf fehlt): ${einst.wachhund.an ? 'an' : 'aus'}`, async () => { einst.wachhund.an = !einst.wachhund.an; await PLAN.einstellungenSpeichern(einst); }],
+      ['Wecker, Abend und Morgen (Aufstehen, Tagesabschluss, Regen)', () => tagesrhythmusMenue(einst)],
       ['Daten sichern / einspielen', sicherungMenue],
       ['Ersteinrichtung', ersteinrichtung],
       ['Test: planen ohne Kurzbefehl (ohne Wecker)', async () => {

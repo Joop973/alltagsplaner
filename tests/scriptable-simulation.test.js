@@ -185,7 +185,7 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "unbekannt irgendwo"/);
   const b = await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.ok(!b.fehler, b.fehler);
-  assert.deepStrictEqual(Array.from(b.wecker, w => w.zeit), ['16:40', '19:40', '06:40']); // 06:40 = Freitagsschicht
+  assert.deepStrictEqual(Array.from(b.wecker, w => w.zeit), ['16:40', '19:40', '05:45', '06:40']); // 05:45 Aufstehen, 06:40 los zur Freitagsschicht
 
   const zeit = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const bloecke = u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe'))
@@ -220,7 +220,7 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.deepStrictEqual(nachErledigt.map(t => `${t.startDate.getHours()}:${t.startDate.getMinutes()} ${t.title}`), ['18:15 Bad putzen', '18:45 Staubsaugen'].slice(1),
     'Bad ist erledigt; Staubsaugen bleibt dank Planruhe um 18:45');
   const planNach = JSON.parse(fs.readFileSync(u.daten('plan.json'), 'utf8'));
-  assert.deepStrictEqual(planNach.wecker.map(w => w.zeit), ['19:40', '06:40'], 'Wecker aus dem letzten Kurzbefehl-Lauf bleiben');
+  assert.deepStrictEqual(planNach.wecker.map(w => w.zeit), ['19:40', '05:45', '06:40'], 'Wecker aus dem letzten Kurzbefehl-Lauf bleiben');
   const ged = JSON.parse(fs.readFileSync(u.daten('gedaechtnis.json'), 'utf8'));
   assert.deepStrictEqual(ged.ereignisse.map(e => [e.typ, e.id, e.geplantStart && new Date(e.geplantStart).getHours()]), [['erledigt', 'bad', 18]]);
 
@@ -508,6 +508,79 @@ test('Menüs: einmal durch alle Bildschirme klicken (keine Laufzeitfehler)', asy
   assert.ok(gezeigt.filter(x => String(x).startsWith('Tabelle')).length >= 3);
   const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
   assert.ok(!log.includes('FEHLER'), log);
+});
+
+test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, Abfahrt', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) }); // Donnerstag
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+    schichten: { referenzMontag: '2026-11-09', referenzTyp: 'A' },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), JSON.stringify([{ id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: null }]));
+  const urls = [];
+  u.ctx.Location.geocode = async () => [{ thoroughfare: 'Teststraße', subThoroughfare: '1', postalCode: '11111', locality: 'Teststadt', location: { latitude: 52.123456, longitude: 7.654321 } }];
+  u.ctx.Request = class {
+    constructor(url) { this.url = url; urls.push(url); }
+    async loadJSON() {
+      // Freitag 06:00 und 07:00 Regen 80 %, sonst trocken
+      const time = [], precipitation_probability = [];
+      for (let d = 12; d <= 14; d++) for (let h = 0; h < 24; h++) {
+        time.push(`2026-11-${d}T${String(h).padStart(2, '0')}:00`);
+        precipitation_probability.push(d === 13 && (h === 6 || h === 7) ? 80 : 5);
+      }
+      return { hourly: { time, precipitation_probability } };
+    }
+    async loadString() { return JSON.stringify({ version: '0' }); }
+  };
+  await u.script('Planer Planen.js', {});
+  const b = await u.script('Planer Planen.js', { shortcutParameter: 'RAD\n12 Min.\n12 Min.\nAUTO\n9 Min.\n9 Min.\n' });
+  assert.ok(urls.some(x => x.includes('api.open-meteo.com') && x.includes('latitude=52.12&longitude=7.65')), urls.join(' '));
+  // Freitag: Regen -> Auto (9 min): Abfahrt 06:51, Wecker 06:46, Aufstehen 05:51
+  assert.deepStrictEqual(Array.from(b.wecker, w => `${w.zeit} ${w.name}`), [
+    '05:51 Planer: Aufstehen (los 06:51 zu Arbeit)',
+    '06:46 Planer: In 5 min los zu Arbeit',
+  ]);
+  const titel = u.mitteilungen.map(m => m.title);
+  const abschluss = u.mitteilungen.find(m => m.title === 'Tagesabschluss');
+  assert.ok(abschluss, titel.join(' | '));
+  assert.match(abschluss.body, /Offen von heute: Bad putzen/);
+  assert.match(abschluss.body, /Regen 80 %: Auto statt Rad/);
+  assert.strictEqual(abschluss.actions[0].titel, 'Alles erledigt');
+  const morgen = u.mitteilungen.find(m => m.title === 'Dein Tag · Fr 13.11.');
+  assert.ok(morgen && morgen.trigger.getHours() === 5, titel.join(' | '));
+
+  // Widget
+  const gezeichnet = [];
+  class Stapel { addText(t) { gezeichnet.push(t); return {}; } }
+  u.ctx.ListWidget = class { addText(t) { gezeichnet.push(t); return {}; } addSpacer() {} addStack() { return new Stapel(); } };
+  u.ctx.Font = { boldSystemFont: () => 'f', systemFont: () => 'f' };
+  u.ctx.Color = Object.assign(function Color() {}, { red: () => 'rot' });
+  let gesetzt = null;
+  u.ctx.Script.setWidget = w => { gesetzt = w; };
+  u.ctx.config = { runsInWidget: true, widgetFamily: 'medium' };
+  await u.script('Planer Widget.js', {});
+  assert.ok(gesetzt && gesetzt.url.includes('Planer'));
+  assert.ok(gezeichnet.includes('Bad putzen'), gezeichnet.join(' | '));
+  u.ctx.config = { runsInApp: false };
+
+  // Tagesabschluss-Knopf "Alles erledigt"
+  u.setJetzt(um(12, 20, 30));
+  const q = Object.fromEntries(new URL(abschluss.actions[0].url.replace('scriptable:///', 'http://x/')).searchParams);
+  await u.script('Planer Aktion.js', { queryParameters: q });
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'))[0].letzte, '2026-11-12');
+
+  // Abfahrt am Freitag um 06:55 merken
+  u.setJetzt(um(13, 6, 55));
+  await u.script('Planer Abfahrt.js', {});
+  const ged = JSON.parse(fs.readFileSync(u.daten('gedaechtnis.json'), 'utf8')).ereignisse;
+  const ab = ged.find(e => e.typ === 'abfahrt');
+  assert.deepStrictEqual([ab.ziel, ab.modus, new Date(ab.geplant).getMinutes()], ['Arbeit', 'Auto', 51]);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
+  assert.match(log, /Regen 80 %: Fr 13\.11\. 06:51 Auto statt Rad zu Arbeit/);
 });
 
 test('Manifest enthält alle Scripts', () => {

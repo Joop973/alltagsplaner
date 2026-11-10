@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "dateien": [
     "planer/adapter/dateien.js",
     "planer/adapter/erinnerungen.js",
@@ -9,6 +9,7 @@
     "planer/adapter/orte.js",
     "planer/adapter/planung.js",
     "planer/adapter/sonder.js",
+    "planer/adapter/widget.js",
     "planer/core/ablauf.js",
     "planer/core/aktion.js",
     "planer/core/alltag.js",
@@ -23,9 +24,11 @@
     "planer/core/standard.js",
     "planer/core/tage.js",
     "planer/core/tagesrhythmus.js",
+    "Planer Abfahrt.js",
     "Planer Aktion.js",
     "Planer Planen.js",
     "Planer Update.js",
+    "Planer Widget.js",
     "Planer.js"
   ]
 }

@@ -174,6 +174,24 @@ Genauso, Uhrzeit 20:00.
 3. **Sofort ausführen**. "Bei Ausführung benachrichtigen" aus.
 4. **Weiter** → **Planer planen**.
 
+**Beim Verlassen von Zuhause** (merkt deine echte Abfahrtszeit, damit der Planer später daraus lernt)
+1. **Verlassen** → Ort: deine Adresse → Zeit: **Jederzeit**.
+2. **Sofort ausführen**. "Bei Ausführung benachrichtigen" aus.
+3. **Neuer leerer Kurzbefehl** → Aktion **Script ausführen** (Scriptable) → Script: **Planer Abfahrt** → **Show When Run** aus. Kein Parameter nötig.
+
+---
+
+## 4. Widget
+
+**Home-Bildschirm**
+1. Auf eine leere Stelle des Home-Bildschirms lange drücken → oben links **Bearbeiten** → **Widget hinzufügen**.
+2. **Scriptable** suchen → mittlere Größe wählen → **Widget hinzufügen**.
+3. Das neue Widget antippen (noch im Bearbeiten-Modus) → **Script**: **Planer Widget** → **When Interacting**: **Run Script**.
+
+**Sperrbildschirm** (nächste Abfahrt bzw. Aufgabe)
+1. Sperrbildschirm lange drücken → **Anpassen** → **Sperrbildschirm** → in das Feld unter der Uhr tippen.
+2. **Scriptable** → rechteckiges Widget wählen → antippen → Script **Planer Widget**.
+
 ---
 
 ## Was passiert wann
@@ -184,3 +202,6 @@ Genauso, Uhrzeit 20:00.
   - Scriptable → **Planer** → **Heute** → Aufgabe antippen → Erledigt / Heute nicht / Später / Nicht nötig.
   - **Erinnerungen-App**, Liste "Planer": dort stehen die Aufgaben von heute und morgen. Abhaken genügt; der Planer liest es beim nächsten Planen ein (spätestens 06:00, 20:00 oder beim Heimkommen).
 - Wecker werden nur für die nächsten 24 Stunden gestellt (Wecker kennen nur eine Uhrzeit, kein Datum).
+- Aufstehwecker "Planer: Aufstehen" kommt 60 min vor der ersten Abfahrt, wenn die vor 10:00 ist. Er läuft über denselben Kurzbefehl, du musst nichts ändern.
+- Regnet es zur Abfahrt (ab 60 %), plant der Planer Auto statt Rad. Dafür fragt der Kurzbefehl fürs Pendeln jetzt auch die Auto-Fahrzeit ab (einmal im Monat).
+- 20:30 Tagesabschluss: offene Aufgaben (Knopf "Alles erledigt"), Aufstehzeit und Bettzeit für morgen. Zur Aufstehzeit: Überblick über den Tag.
