@@ -1,4 +1,4 @@
-# Plan Version 3 (Stand 10.11.2026)
+# Plan Version 3 (Stand 10.11.2026) – komplett gebaut am 11.11.2026 (Version 3.2.0), siehe docs/einrichtung.md
 
 Ziel: kostenlos, einfach, verlässlich, lernend. Alles Neue bekommt einen Ein/Aus-Schalter, Standard ist "an".
 

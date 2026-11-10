@@ -194,6 +194,52 @@ Genauso, Uhrzeit 20:00.
 
 ---
 
+## 5. Kurzbefehl "Planer sagen" (Spracheingabe)
+
+Danach reicht: **"Hey Siri, Planer sagen"** – oder das Kurzbefehle-Widget antippen.
+
+1. Neuer Kurzbefehl, Name exakt: **Planer sagen**.
+2. Aktion **Text diktieren** (auch "Diktieren"). Sprache: **Deutsch**. "Zuhören stoppen": **Nach Pause**.
+3. Aktion **Claude fragen** (App Claude). In das Textfeld diesen Text einfügen (kopieren aus dieser Anleitung), danach ein Leerzeichen und die Variable **Diktierter Text** (über der Tastatur):
+
+   ```
+   Wandle den folgenden gesprochenen Satz für meinen Alltagsplaner in JSON um. Antworte NUR mit JSON, ohne Erklärung, im Format {"aktionen":[{...}]}. Felder: aktion (erledigt, spaeter, heutenicht, nichtnoetig, einkauf, termin, aufgabe, abwesend, keineaufgaben, frist, geburtstag, genommen oder unklar), name (Aufgabe, Medikament, Person oder Frist), sachen (Liste, nur bei einkauf), titel, datum, uhrzeit (HH:MM), dauer (Minuten), ort (bei termin), bis (letzter Tag bei abwesend), art (frei, krank oder weg bei abwesend), intervall (Tage bei aufgabe). Datum genau so übernehmen, wie es gesagt wurde (z. B. "morgen", "Dienstag", "12.3."), nicht ausrechnen. Satz:
+   ```
+4. Aktion **Text**. Zwei Zeilen:
+   - Zeile 1: `DIKTAT: ` und dahinter die Variable **Diktierter Text**
+   - Zeile 2: `CLAUDE: ` und dahinter die Ausgabe von **Claude fragen** (Variable auswählen → die Aktion "Claude fragen" antippen)
+5. Aktion **Script ausführen** (Scriptable). Script: **Planer Sprache**. Parameter: lange drücken → Variable auswählen → Aktion **Text** (Schritt 4).
+   **Show When Run: AN** (wichtig – sonst kann der Planer nicht zurückfragen).
+
+So funktioniert es: Du sprichst, Claude bringt den Satz in eine feste Form, der Planer zeigt "Verstanden: …" und führt nach **Ausführen** alles aus. Datum und Uhrzeit rechnet immer der Planer aus, nicht Claude.
+
+**Ohne Claude** (oder wenn Schritt 3 klemmt): Schritt 3 und Zeile 2 von Schritt 4 weglassen. Dann versteht der Planer feste Sätze:
+- "Bad putzen erledigt", "Staubsaugen nicht nötig", "Fenster heute nicht", "Wäsche später"
+- "Milch und Brot auf die Einkaufsliste"
+- "Termin Arzt Dienstag 10 Uhr in Musterstadt", "Friseur am 3.12. um 15 Uhr"
+- "Ich bin krank", "Urlaub vom 1.12. bis 5.12.", "Heute keine Aufgaben"
+- "Neue Aufgabe Pflanzen gießen alle 3 Tage 10 Minuten"
+- "Frist TÜV am 20.12.", "Geburtstag von Oma am 5. März", "Ibuprofen genommen"
+
+Dasselbe geht in der App: **Planer → Heute → Eintippen …**
+
+Beim ersten Termin fragt der Planer, in welchen Kalender neue Termine sollen.
+
+---
+
+## 6. Dienstplan-PDF einlesen
+
+1. Die PDF öffnen (Mail, Dateien …) → **Teilen**-Symbol.
+2. In der Reihe der Apps **Scriptable** wählen (evtl. unter "Mehr"; kann auch "Run Script" heißen) → **Planer Dienstplan**.
+3. Beim ersten Mal: deinen Namen so eintippen, wie er in der ersten Spalte steht.
+4. Vorschau prüfen → **Übernehmen**. Die Schichten stehen danach im Kalender "Arbeit".
+5. Einmal **Planer planen** starten, damit die Wecker stimmen.
+
+Beim allerersten Mal lädt Scriptable das Leseprogramm (pdf.js, kostenlos) aus dem Internet; danach geht es offline.
+Alternativ: Planer → Einstellungen → Dienstplan-PDF → PDF auswählen.
+
+---
+
 ## Was passiert wann
 
 - Der Kurzbefehl läuft automatisch um 06:00, um 20:00 und wenn du nach Hause kommst.

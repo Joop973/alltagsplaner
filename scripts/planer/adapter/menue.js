@@ -261,6 +261,7 @@ async function heute() {
     if (plan.terminText) zeile(t, 'Termine prüfen:', plan.terminText, { farbe: Color.red(), hoehe: 70, klein: true });
     const wecker = (plan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
     if (wecker.length) zeile(t, `Wecker: ${wecker.map(w => w.zeit).join(', ')}`);
+    zeile(t, 'Eintippen …', 'z. B. "Termin Arzt Dienstag 10 Uhr" oder "Milch auf die Einkaufsliste"', { waehlen: () => { wahl = { art: 'tippen' }; } });
     zeile(t, 'Ich habe jetzt Zeit …', 'passende Aufgabe vorschlagen', { waehlen: () => { wahl = { art: 'zeit' }; } });
     const keine = z.keineAufgaben === hT;
     zeile(t, keine ? 'Heute wieder Aufgaben' : 'Heute keine Aufgaben', keine ? null : 'z. B. Besuch, kaputt, krank', { waehlen: () => { wahl = { art: 'keine' }; } });
@@ -291,6 +292,7 @@ async function heute() {
     if (!wahl) return;
     if (wahl.art === 'block') await blockAktion(wahl.block);
     if (wahl.art === 'zeit') await zeitVorschlag();
+    if (wahl.art === 'tippen') await hole('adapter/sprache').eintippen();
     if (wahl.art === 'neu') { await PLAN.neuPlanen(); }
     if (wahl.art === 'keine') { await PLAN.heuteKeineAufgaben(!keine); await PLAN.neuPlanen(); }
     if (wahl.art === 'rueckstand' && await frage('Rückstand auflösen?', `${ueberfaellig.map(a => a.name).join(', ')}\n\nAlles gilt als "nicht nötig", die Abstände laufen neu ab heute.`)) {

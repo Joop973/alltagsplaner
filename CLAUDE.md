@@ -86,7 +86,7 @@ per Mitteilung erinnert und vor jeder Abfahrt einen Wecker stellt.
 Version 1 (Abschnitte 1–7) fertig. Version 2 (Fragerunde 09.11.2026), in dieser Reihenfolge:
 1. Geburtstage (fertig), 2. Fristen (fertig), 3. Checklisten (fertig), 4. Blumen (fertig),
 5. Orte lernen (fertig, einfache Mischung), 6. Dienstplan-PDF-Import (offen), 7. Spracheingabe (offen).
-Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig, Stufe 2 fertig (11.11.2026). Offen: Stufe 3 PDF, Stufe 4 Lernen, Stufe 5 Sprache (über Claude-App-Aktion "Claude fragen", vorhanden).
+Version 3 (Plan in docs/plan.md) komplett gebaut (11.11.2026, Version 3.2.0): Stufe 1–5 + Extras. Noch nichts davon am iPhone getestet. Checkliste für den Nutzer: docs/einrichtung.md.
 
 ## Arbeitsweise
 
@@ -150,3 +150,6 @@ Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig, Stufe 2 fertig (11.
 - Wachhund 07:30, Update-Hinweis (planer/version.json vom Update-Script, Manifest-Version erhöhen!), Log gebündelt, Sicherung über DocumentPicker.
 - KI: iPhone 15 ohne Apple Intelligence. Claude-App bietet in Kurzbefehlen "Claude fragen" (Screenshot 11.11.) -> Spracheingabe darüber.
 - Stufe 2: Aufstehwecker (Planer: Aufstehen, 60 min vor erster Abfahrt vor 10:00, über den bestehenden Kurzbefehl), Tagesabschluss 20:30 (offen + Aufstehen + Bettzeit 8 Std., Knopf "Alles erledigt"), Morgen-Überblick zur Aufstehzeit, Regen ab 60 % = Auto statt Rad (Open-Meteo, Lage gerundet in zustand.heimKoord, Wetter 2 Std. gemerkt; Phase a fragt zu jeder Rad-Strecke die Auto-Strecke mit ab), Widget "Planer Widget" (Home + Sperrbildschirm), Script "Planer Abfahrt" für Automation "Verlassen" (Gedächtnis), Hinweis am Blockende (Option, aus).
+- Stufe 3 Dienstplan: pdf.js 3.11.174 (UMD, cdnjs/jsDelivr) einmal nach "planer-pdfjs/" geladen, in WebView mit Blob-Worker; Script "Planer Dienstplan" (Teilen-Menü, share-sheet-inputs: file-url). Parser core/dienstplan.js: Datumsspalten aus Kopfzeile, Personenblock bis zum nächsten Namen (Grenze halbe Zeilenhöhe – Namen stehen leicht unter der ersten Uhrzeit), erste/letzte Uhrzeit je Spalte, leer = frei. Am echten Plan geprüft (nur lokal, nie ins Repo). Reihenfolge: App-Änderung > Dienstplan > A/B-Muster. Name in einstellungen.dienstplan.name.
+- Stufe 4 Lernen (core/lernen.js, lernen.json): einmal täglich; Dauer automatisch bis ±50 % (Zeit Start bis "Erledigt", < 3 min zählt nicht), Abstand nur Vorschlag, Tageszeiten meiden automatisch (3-mal verschoben, nie erledigt), Abfahrts-Verspätung als Hinweis; Rückgängig/Ablehnen sperrt 60 Tage; Wochenrückblick So 18:00.
+- Stufe 5 Sprache (core/sprache.js): Kurzbefehl "Planer sagen" = Diktieren -> "Claude fragen" (Anweisung = CLAUDE_ANWEISUNG) -> Text "DIKTAT: …\nCLAUDE: …" -> Script "Planer Sprache" (Show When Run AN, Rückfrage). Datum/Uhrzeit rechnet immer Scriptable. Ohne/fehlerhafte Claude-Antwort: feste Satzmuster. Termine in den beim ersten Mal gewählten Kalender (einstellungen.sprache.kalender).

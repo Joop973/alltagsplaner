@@ -656,6 +656,48 @@ test('Stufe 4: Lernen, Wochenrückblick, Rückgängig', async () => {
   assert.ok(!log.includes('FEHLER'), log);
 });
 
+test('Stufe 5: Planer sagen (Claude-Antwort und ohne Claude)', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) }); // Donnerstag
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), JSON.stringify([{ id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: '2026-11-01' }]));
+  const antworten = [];
+  const gezeigt = [];
+  u.ctx.Alert = class {
+    constructor() { this.aktionen = []; this.felder = []; }
+    addAction(t) { this.aktionen.push(t); } addCancelAction() {}
+    addTextField(p2, w) { this.felder.push(w || ''); return {}; }
+    textFieldValue(i) { return this.felder[i]; }
+    async presentAlert() { gezeigt.push(`${this.title}: ${this.message}`); return antworten.length ? antworten.shift() : -1; }
+    async presentSheet() { gezeigt.push(`${this.title}: ${this.aktionen.join(',')}`); const i = this.aktionen.indexOf('Privat'); return i; }
+  };
+  antworten.push(0); // "Ausführen"
+  const claude = '{"aktionen":[{"aktion":"termin","titel":"Zahnarzt","datum":"Dienstag","uhrzeit":"10:00","ort":"Musterdorf"},{"aktion":"einkauf","sachen":["Milch","Brot"]},{"aktion":"erledigt","name":"Bad"}]}';
+  const aus = await u.script('Planer Sprache.js', { shortcutParameter: `DIKTAT: Dienstag zehn Uhr Zahnarzt in Musterdorf, Milch und Brot kaufen, Bad ist erledigt\nCLAUDE: ${claude}` });
+  assert.match(aus, /^Erledigt: Termin "Zahnarzt" am Di 17\.11\. um 10:00 \(60 min\) in Musterdorf; Auf die Einkaufsliste: Milch, Brot; "Bad putzen" als erledigt markieren$/);
+  const zahn = u.termine.find(t => t.title === 'Zahnarzt');
+  assert.ok(zahn && zahn.calendar.title === 'Privat' && zahn.startDate.getDate() === 17 && zahn.startDate.getHours() === 10 && zahn.location === 'Musterdorf');
+  assert.deepStrictEqual(u.erinnerungen.filter(r => r.calendar.title === 'Einkauf').map(r => r.title), ['Milch', 'Brot']);
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'))[0].letzte, '2026-11-12');
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('einstellungen.json'), 'utf8')).sprache.kalender, 'Privat');
+
+  // ohne Claude: nur Diktat, Kalender schon gewählt
+  antworten.push(0);
+  await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: Ich bin krank' });
+  const e = JSON.parse(fs.readFileSync(u.daten('einstellungen.json'), 'utf8'));
+  assert.deepStrictEqual(e.schichten.ausnahmen.map(x => [x.von, x.art]), [['2026-11-12', 'krank']]);
+  // Abbrechen ändert nichts
+  await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: Neue Aufgabe Pflanzen gießen alle 3 Tage' });
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8')).length, 1);
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
+  assert.match(log, /Sprache \(claude\)/);
+});
+
 test('Manifest enthält alle Scripts', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   const alle = [];

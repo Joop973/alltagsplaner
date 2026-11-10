@@ -373,8 +373,10 @@ function kurzbefehlStarten(name) {
 }
 
 // Knopf aus Mitteilung oder Tagesplan. Plant danach direkt neu (Aufgaben ändern keine Abfahrten).
-async function aktion(q) {
+// opt.ohneNeuplanen: mehrere Aktionen hintereinander (Sprache), danach einmal neu planen
+async function aktion(q, opt) {
   q = q || {};
+  opt = opt || {};
   const jetzt = new Date();
   const z = await zustandLaden();
 
@@ -436,7 +438,7 @@ async function aktion(q) {
     geplantStart: block ? new Date(block.start).toISOString() : null,
     geplantEnde: block ? new Date(block.end).toISOString() : null,
   }, jetzt);
-  await neuPlanen();
+  if (!opt.ohneNeuplanen) await neuPlanen();
 }
 
 // Nach "Apotheke erledigt": Vorrat um eine Packung erhöhen (wenn Packungsgröße bekannt)

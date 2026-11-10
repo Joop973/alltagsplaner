@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
+  "version": "3.2.0",
   "dateien": [
     "planer/adapter/dateien.js",
     "planer/adapter/dienstplan.js",
@@ -11,6 +11,7 @@
     "planer/adapter/pdf.js",
     "planer/adapter/planung.js",
     "planer/adapter/sonder.js",
+    "planer/adapter/sprache.js",
     "planer/adapter/widget.js",
     "planer/core/ablauf.js",
     "planer/core/aktion.js",
@@ -25,6 +26,7 @@
     "planer/core/planer.js",
     "planer/core/schichten.js",
     "planer/core/sonder.js",
+    "planer/core/sprache.js",
     "planer/core/standard.js",
     "planer/core/tage.js",
     "planer/core/tagesrhythmus.js",
@@ -32,6 +34,7 @@
     "Planer Aktion.js",
     "Planer Dienstplan.js",
     "Planer Planen.js",
+    "Planer Sprache.js",
     "Planer Update.js",
     "Planer Widget.js",
     "Planer.js"
