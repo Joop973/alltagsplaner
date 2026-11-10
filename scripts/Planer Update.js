@@ -49,6 +49,10 @@ try {
     fm.writeString(ziel, text);
     zeilen.push(`${alt == null ? 'neu' : 'aktualisiert'}: ${datei}`);
   }
+  // installierte Version merken (für den Update-Hinweis)
+  const vp = fm.joinPath(fm.joinPath(basis, 'planer'), 'version.json');
+  if (!fm.fileExists(ordnerVon(vp))) fm.createDirectory(ordnerVon(vp), true);
+  fm.writeString(vp, JSON.stringify({ version: manifest.version, installiert: new Date().toISOString() }));
   if (!zeilen.length) zeilen.push('Alles ist schon aktuell.');
   zeilen.unshift(`Version ${manifest.version}`);
 } catch (e) {

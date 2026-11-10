@@ -198,8 +198,9 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.ok(u.mitteilungen[0].actions[0].url.startsWith('scriptable:///run/Planer%20Aktion?aktion=erledigt&id=bad'));
 
   // Erinnerungen zum Abhaken (heute + morgen)
-  assert.deepStrictEqual(u.erinnerungen.map(r => r.title), ['Bad putzen · Do 12.11. 18:15', 'Staubsaugen · Do 12.11. 18:45']);
-  assert.strictEqual(u.mitteilungen[0].actions.map(a => a.titel).join(','), 'Erledigt,Später,Heute nicht');
+  assert.deepStrictEqual(u.erinnerungen.map(r => r.title), ['Bad putzen · 18:15', 'Staubsaugen · 18:45']);
+  assert.ok(u.erinnerungen.every(r => r.dueDate && r.dueDateIncludesTime === false), 'Erinnerungen mit Datum (Heute-Liste)');
+  assert.strictEqual(u.mitteilungen[0].actions.map(a => a.titel).join(','), 'Erledigt,Später,Heute nicht,Nicht nötig');
 
   // Nochmal planen: keine doppelten Einträge
   await u.script('Planer Planen.js', { shortcutParameter: text });
@@ -213,7 +214,15 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   await u.script('Planer Aktion.js', { queryParameters: Object.fromEntries(url.searchParams) });
   const aufgaben = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
   assert.strictEqual(aufgaben.find(x => x.id === 'bad').letzte, '2026-11-12');
-  assert.deepStrictEqual(u.geoeffnet, ['shortcuts://run-shortcut?name=Planer%20planen']);
+  // plant direkt in Scriptable neu, ohne in die Kurzbefehle-App zu springen
+  assert.deepStrictEqual(u.geoeffnet, []);
+  const nachErledigt = u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe'));
+  assert.deepStrictEqual(nachErledigt.map(t => `${t.startDate.getHours()}:${t.startDate.getMinutes()} ${t.title}`), ['18:15 Bad putzen', '18:45 Staubsaugen'].slice(1),
+    'Bad ist erledigt; Staubsaugen bleibt dank Planruhe um 18:45');
+  const planNach = JSON.parse(fs.readFileSync(u.daten('plan.json'), 'utf8'));
+  assert.deepStrictEqual(planNach.wecker.map(w => w.zeit), ['19:40', '06:40'], 'Wecker aus dem letzten Kurzbefehl-Lauf bleiben');
+  const ged = JSON.parse(fs.readFileSync(u.daten('gedaechtnis.json'), 'utf8'));
+  assert.deepStrictEqual(ged.ereignisse.map(e => [e.typ, e.id, e.geplantStart && new Date(e.geplantStart).getHours()]), [['erledigt', 'bad', 18]]);
 
   // In der Erinnerungen-App "Staubsaugen" abhaken, dann neu planen
   const saugen = u.erinnerungen.find(r => r.title.startsWith('Staubsaugen'));
@@ -366,6 +375,86 @@ test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen
   await u.script('Planer Aktion.js', { queryParameters: { aktion: 'erledigt', id: 'geschenk-max-mustermann-2026' } });
   const st = JSON.parse(fs.readFileSync(u.daten('sonderstatus.json'), 'utf8'));
   assert.strictEqual(st.erledigt['geschenk-max-mustermann-2026'], '2026-11-12');
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.ok(!log.includes('FEHLER'), log);
+});
+
+test('Stufe 1: Krank, verschobener Block, Einkauf, Medikament, Folgeaufgabe, Wachhund, Update-Hinweis', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 9) }); // Donnerstag
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+    schichten: { referenzMontag: '2026-11-09', referenzTyp: 'A' },
+  }));
+  const S = require('../scripts/planer/core/standard');
+  const aufgaben = S.standardAufgaben().map(a => ({ ...a, letzte: '2026-11-01' }));
+  fs.writeFileSync(u.daten('aufgaben.json'), JSON.stringify(aufgaben));
+  fs.writeFileSync(u.daten('medikamente.json'), JSON.stringify([{ id: 'm1', name: 'Tablette', zeiten: ['20:00'], proEinnahme: 1, vorrat: 30 }]));
+  fs.mkdirSync(path.join(u.wurzel, 'planer'), { recursive: true });
+  fs.writeFileSync(path.join(u.wurzel, 'planer', 'version.json'), JSON.stringify({ version: '0.9.0' }));
+  // Freitag krank (ganztägig im Kalender Privat)
+  u.termin('Privat', 'Krank', um(13, 0), um(14, 0), '', true);
+  // Einkaufsliste mit 5 Sachen
+  const liste = { title: 'Einkauf' };
+  u.ctx.Calendar.forReminders = async () => [liste, ...(await Promise.resolve([]))];
+  for (const t of ['Milch', 'Brot', 'Eier', 'Käse', 'Äpfel']) {
+    const r = new u.ctx.Reminder(); r.calendar = liste; r.title = t; await r.save();
+  }
+
+  await u.script('Planer Planen.js', {});
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  const arbeit = u.termine.filter(t => t.calendar.title === 'Arbeit' && t.notes.includes('planer-schicht'));
+  const tage = arbeit.map(t => t.startDate.getDate());
+  assert.ok(tage.includes(12), 'heutige Schicht wird eingetragen, obwohl sie um 07:00 begann');
+  assert.ok(!tage.includes(13), 'krank: keine Schicht am Freitag');
+  let planer = u.termine.filter(t => t.calendar.title === 'Planer');
+  assert.ok(!planer.some(t => t.startDate.getDate() === 13), 'krank: keine Aufgaben am Freitag');
+  const einkauf = planer.find(t => t.title.startsWith('Einkaufen (5 Sachen)'));
+  assert.ok(einkauf, planer.map(t => t.title).join(' | '));
+  const titel = u.mitteilungen.map(m => m.title);
+  assert.ok(titel.includes('Medikament: Tablette'));
+  assert.ok(titel.includes('Noch nicht genommen? Tablette'));
+  assert.ok(titel.includes('Planer lief heute früh nicht'));
+  assert.ok(u.mitteilungen.find(m => m.identifier === 'planer-wachhund').trigger.getDate() === 13);
+  assert.ok(titel.includes('Planer: Update verfügbar'));
+
+  // Bad-Block im Kalender von Hand verschieben -> bleibt beim Neuplanen fest
+  const bad = planer.find(t => t.title === 'Bad putzen');
+  const neuStart = new Date(bad.startDate.getTime() + 60 * 60000);
+  bad.endDate = new Date(bad.endDate.getTime() + 60 * 60000);
+  bad.startDate = neuStart;
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  planer = u.termine.filter(t => t.calendar.title === 'Planer');
+  const badNeu = planer.find(t => t.title === 'Bad putzen');
+  assert.strictEqual(badNeu.startDate.getTime(), neuStart.getTime());
+  assert.ok(badNeu.notes.includes('|fest'));
+
+  // Medikament "Genommen": Vorrat sinkt, Mitteilungen weg
+  const med = u.mitteilungen.find(m => m.title === 'Medikament: Tablette');
+  const q = Object.fromEntries(new URL(med.actions[0].url.replace('scriptable:///', 'http://x/')).searchParams);
+  await u.script('Planer Aktion.js', { queryParameters: q });
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('medikamente.json'), 'utf8'))[0].vorrat, 29);
+  assert.ok(!u.mitteilungen.some(m => m.identifier.startsWith('planer-med-m1-2026-11-12-2000')));
+
+  // Wäsche erledigt -> Folgeaufgabe "Wäsche aufhängen" in 2 Stunden, bleibt beim Neuplanen erhalten
+  u.setJetzt(um(12, 17));
+  await u.script('Planer Aktion.js', { queryParameters: { aktion: 'erledigt', id: 'waesche' } });
+  let folge = u.mitteilungen.filter(m => m.identifier.startsWith('planer-folge-waesche'));
+  assert.deepStrictEqual(folge.map(m => `${m.trigger.getHours()}:${m.trigger.getMinutes()}`), ['19:0', '19:30', '20:0']);
+  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  assert.strictEqual(u.mitteilungen.filter(m => m.identifier.startsWith('planer-folge-waesche')).length, 3);
+  const ok = Object.fromEntries(new URL(u.mitteilungen.find(m => m.identifier.startsWith('planer-folge-waesche')).actions[0].url.replace('scriptable:///', 'http://x/')).searchParams);
+  await u.script('Planer Aktion.js', { queryParameters: ok });
+  assert.strictEqual(u.mitteilungen.filter(m => m.identifier.startsWith('planer-folge-waesche')).length, 0);
+
+  // Einkaufen erledigt -> Liste abgehakt, keine Einkaufs-Aufgabe mehr
+  const ekId = JSON.parse(fs.readFileSync(u.daten('plan.json'), 'utf8')).bloecke.find(b => b.aufgabeId.startsWith('einkauf-')).aufgabeId;
+  await u.script('Planer Aktion.js', { queryParameters: { aktion: 'erledigt', id: ekId } });
+  assert.ok(u.erinnerungen.filter(r => r.calendar === liste).every(r => r.isCompleted));
+  assert.ok(!u.termine.some(t => t.calendar.title === 'Planer' && t.title.startsWith('Einkaufen') && t.endDate > um(12, 17)), 'keine zukünftige Einkaufs-Aufgabe mehr');
+
   const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
   assert.ok(!log.includes('FEHLER'), log);
 });

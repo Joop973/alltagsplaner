@@ -52,9 +52,11 @@ async function schreiben(einst, bloecke, jetzt, log) {
     if (start >= bis) continue;
     const r = new Reminder();
     r.calendar = l;
-    // ohne Fälligkeitsdatum: sonst kommt zusätzlich eine Erinnerungs-Mitteilung
-    r.title = `${b.name} · ${D.kurz(start)} ${D.hm(start)}`;
+    r.title = `${b.name} · ${D.hm(start)}`;
     r.notes = `${MARKE}${b.aufgabeId}|${start.toISOString()}`;
+    // Datum ohne Uhrzeit: steht unter "Heute", aber keine zweite Mitteilung zur Blockzeit
+    r.dueDate = D.tagesBeginn(start);
+    r.dueDateIncludesTime = false;
     await r.save();
     neu++;
   }
@@ -94,4 +96,39 @@ async function fristenSchreiben(einst, fristen, idFuer, log) {
   await log(`Fristen-Liste: ${fristen.length} Einträge.`);
 }
 
-module.exports = { erledigteLesen, schreiben, fristenErledigteLesen, fristenSchreiben };
+// ---------- Einkaufsliste ----------
+
+// Offene Einträge der Liste "Einkauf" -> [{titel, seit}]
+async function einkaufLesen(einst, log) {
+  if (!einst.einkauf.an) return [];
+  const l = await liste(einst, log, einst.einkauf.liste);
+  if (!l) return [];
+  return (await Reminder.all([l]))
+    .filter(r => !r.isCompleted)
+    .map(r => ({ titel: r.title, seit: D.ymd(r.creationDate ? new Date(r.creationDate) : new Date()) }));
+}
+
+async function einkaufHinzufuegen(einst, titel, log) {
+  const l = await liste(einst, log, einst.einkauf.liste);
+  if (!l) return false;
+  const r = new Reminder();
+  r.calendar = l;
+  r.title = titel;
+  await r.save();
+  return true;
+}
+
+// Nach "Einkaufen erledigt": alle offenen Einträge abhaken
+async function einkaufAbhaken(einst, log) {
+  const l = await liste(einst, log, einst.einkauf.liste);
+  if (!l) return 0;
+  let n = 0;
+  for (const r of (await Reminder.all([l])).filter(x => !x.isCompleted)) {
+    r.isCompleted = true;
+    await r.save();
+    n++;
+  }
+  return n;
+}
+
+module.exports = { erledigteLesen, schreiben, fristenErledigteLesen, fristenSchreiben, einkaufLesen, einkaufHinzufuegen, einkaufAbhaken };

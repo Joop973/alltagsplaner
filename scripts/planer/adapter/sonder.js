@@ -21,7 +21,7 @@ async function statusLaden() { return DAT.lesen('sonderstatus.json', SO.leererSt
 async function speichern(name, daten) { await DAT.schreiben(name, daten); }
 
 // Ist die Aufgaben-ID eine Sonderaufgabe?
-function istSonder(id) { return /^(geschenk|frist|blumen)-/.test(String(id || '')); }
+function istSonder(id) { return /^(geschenk|frist|blumen|einkauf|apotheke)-/.test(String(id || '')); }
 
 // Knopf (Mitteilung / Tagesplan) für eine Sonderaufgabe
 async function aktion(q, jetzt) {

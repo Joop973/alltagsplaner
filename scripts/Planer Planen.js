@@ -22,4 +22,5 @@ try {
   await P.fehler(e);
   Script.setShortcutOutput({ fehler: String(e), rad: [], auto: [], anzahl: 0, wecker: [] });
 }
+await P.abschluss();
 Script.complete();

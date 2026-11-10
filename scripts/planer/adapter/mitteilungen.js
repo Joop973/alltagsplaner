@@ -5,9 +5,13 @@ const PRAEFIX = 'planer-';
 const MAX = 50; // iOS erlaubt höchstens 64 geplante Mitteilungen
 const MAX_GESAMT = 60;
 
-function aktionsUrl(aktion, block) {
-  const q = `aktion=${aktion}&id=${encodeURIComponent(block.aufgabeId)}&ende=${encodeURIComponent(new Date(block.end).toISOString())}`;
+function url(param) {
+  const q = Object.entries(param).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
   return `scriptable:///run/${encodeURIComponent('Planer Aktion')}?${q}`;
+}
+
+function aktionsUrl(aktion, block) {
+  return url({ aktion, id: block.aufgabeId, ende: new Date(block.end).toISOString() });
 }
 
 async function alteEntfernen() {
@@ -26,12 +30,15 @@ async function bloeckeAnkuendigen(bloecke, jetzt) {
     m.identifier = `${PRAEFIX}${b.aufgabeId}-${start.getTime()}`;
     m.threadIdentifier = 'planer';
     m.title = `Jetzt: ${b.name}`;
-    m.body = `${Math.round((new Date(b.end) - start) / 60000)} min – Erledigt, Später oder Heute nicht?`;
+    const min = Math.round((new Date(b.end) - start) / 60000);
+    const schritte = b.schritte && b.schritte.length ? `\n${b.schritte.map(x => '- ' + x).join('\n')}` : '';
+    m.body = `${min} min${b.unterwegs ? ' (unterwegs)' : ''}${schritte}`;
     m.sound = 'default';
     m.setTriggerDate(start);
     m.addAction('Erledigt', aktionsUrl('erledigt', b));
     m.addAction('Später', aktionsUrl('spaeter', b));
     m.addAction('Heute nicht', aktionsUrl('heutenicht', b));
+    if (!b.einmalig) m.addAction('Nicht nötig', aktionsUrl('nichtnoetig', b));
     await m.schedule();
     n++;
   }
@@ -51,10 +58,45 @@ async function weitereAnkuendigen(weitere, jetzt, schonGeplant) {
     m.body = w.text;
     m.sound = 'default';
     m.setTriggerDate(new Date(w.zeit));
+    if (w.aktion && w.aktion.art === 'med') {
+      m.addAction('Genommen', url({ aktion: 'med', k: w.aktion.schluessel }));
+    }
+    if (w.aktion && w.aktion.art === 'folge') {
+      m.addAction('Erledigt', url({ aktion: 'folgeok', id: w.aktion.id }));
+    }
     await m.schedule();
     n++;
   }
   return n;
+}
+
+// Wachhund: Mitteilung für morgen früh, die jeder erfolgreiche Lauf wieder nach hinten schiebt.
+async function wachhundStellen(cfg, jetzt, letzterLauf) {
+  if (!cfg || !cfg.an) return;
+  const [h, mi] = String(cfg.zeit || '07:30').split(':').map(Number);
+  const z = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() + (jetzt.getHours() >= 5 ? 1 : 0), h, mi);
+  const m = new Notification();
+  m.identifier = `${PRAEFIX}wachhund`;
+  m.threadIdentifier = 'planer';
+  m.title = 'Planer lief heute früh nicht';
+  m.body = `Letzter Lauf: ${letzterLauf}. Wecker und Plan sind evtl. veraltet. Bitte "Planer planen" starten oder die Automation prüfen.`;
+  m.sound = 'default';
+  m.setTriggerDate(z);
+  m.addAction('Jetzt planen', `shortcuts://run-shortcut?name=${encodeURIComponent('Planer planen')}`);
+  await m.schedule();
+}
+
+// Einzelne geplante Mitteilungen entfernen (z. B. Nachfrage nach "Genommen")
+async function entfernen(praefixe) {
+  const alle = await Notification.allPending();
+  const ids = alle.map(n => n.identifier).filter(id => id && praefixe.some(p => id.startsWith(p)));
+  if (ids.length) await Notification.removePending(ids);
+  try {
+    const da = await Notification.allDelivered();
+    const dIds = da.map(n => n.identifier).filter(id => id && praefixe.some(p => id.startsWith(p)));
+    if (dIds.length) await Notification.removeDelivered(dIds);
+  } catch (e) { /* egal */ }
+  return ids.length;
 }
 
 async function sofort(titel, text) {
@@ -66,4 +108,4 @@ async function sofort(titel, text) {
   await m.schedule();
 }
 
-module.exports = { alteEntfernen, bloeckeAnkuendigen, weitereAnkuendigen, sofort, aktionsUrl };
+module.exports = { alteEntfernen, bloeckeAnkuendigen, weitereAnkuendigen, wachhundStellen, entfernen, sofort, aktionsUrl };

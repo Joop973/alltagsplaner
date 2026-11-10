@@ -8,4 +8,5 @@ try {
 } catch (e) {
   await P.fehler(e);
 }
+await P.abschluss();
 Script.complete();

@@ -1,4 +1,4 @@
-// Scriptable: Abläufe "Planer Planen" (Phase a/b), Planen ohne Kurzbefehl, Knöpfe aus Mitteilungen.
+// Scriptable: Abläufe "Planer Planen" (Phase a/b), Neuplanen ohne Kurzbefehl, Knöpfe aus Mitteilungen.
 'use strict';
 
 function hole(p) {
@@ -10,24 +10,34 @@ const F = hole('core/fahrzeiten');
 const A = hole('core/ablauf');
 const P = hole('core/planer');
 const AK = hole('core/aktion');
+const T = hole('core/tage');
+const AL = hole('core/alltag');
+const G = hole('core/gedaechtnis');
+const SO = hole('core/sonder');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
 const ORT = hole('adapter/orte');
 const ERI = hole('adapter/erinnerungen');
-const AKT = hole('core/aktion');
 const SON = hole('adapter/sonder');
-const SO = hole('core/sonder');
 
 const KURZBEFEHL = 'Planer planen';
+const QUELLE = 'https://raw.githubusercontent.com/Joop973/alltagsplaner/main/';
 const log = t => DAT.log(t);
 
 async function laden() {
   const einst = S.zusammenfuehren(S.standardEinstellungen(), await DAT.lesen('einstellungen.json', {}));
-  const aufgaben = await DAT.lesen('aufgaben.json', null) || S.standardAufgaben();
+  const aufgaben = (await DAT.lesen('aufgaben.json', null)) || S.standardAufgaben();
   const cache = await DAT.lesen('fahrzeiten.json', {});
   return { einst, aufgaben, cache };
 }
+
+async function zustandLaden() {
+  return { folgen: [], medStatus: { genommen: {} }, titelOrte: {}, schichtRec: {}, ...(await DAT.lesen('zustand.json', {})) };
+}
+async function zustandSpeichern(z) { await DAT.schreiben('zustand.json', z); }
+async function medsLaden() { return DAT.lesen('medikamente.json', []); }
+async function medsSpeichern(m) { await DAT.schreiben('medikamente.json', m); }
 
 async function einstellungenSpeichern(einst) { await DAT.schreiben('einstellungen.json', einst); }
 async function aufgabenSpeichern(aufgaben) { await DAT.schreiben('aufgaben.json', aufgaben); }
@@ -36,15 +46,35 @@ function pruefen(einst) {
   if (!einst.eingerichtet) throw new Error('Bitte zuerst in "Planer" die Ersteinrichtung machen.');
 }
 
+// Termine lesen; Termine ohne Ort bekommen den Ort, den derselbe Titel schon öfter hatte.
+async function termineMitOrt(einst, jetzt, z) {
+  const roh = await KAL.termineLesen(einst, jetzt);
+  z.titelOrte = AL.titelOrteLernen(z.titelOrte, roh);
+  return AL.ortErgaenzen(roh, z.titelOrte);
+}
+
+// Tagesarten der nächsten "tage" Tage (frei, krank, verreist, heute keine Aufgaben)
+async function tagesInfoLesen(einst, jetzt, z, tage) {
+  const ganz = await KAL.ganztaegigeLesen(einst, jetzt, tage);
+  const heute = D.ymd(jetzt);
+  return T.tagesInfo({
+    ganztaegige: ganz, ausnahmen: einst.schichten.ausnahmen, woerter: einst.tage,
+    keineAufgaben: z.keineAufgaben === heute ? heute : null,
+  });
+}
+
 // Phase (a): Schichten schreiben, benötigte Strecken an den Kurzbefehl geben
 // (getrennte Listen "rad" und "auto" mit {von, nach}).
 async function phaseA() {
   const { einst, cache } = await laden();
   pruefen(einst);
   const jetzt = new Date();
+  const z = await zustandLaden();
   await log('--- Planen Phase a ---');
-  await KAL.schichtenSchreiben(einst, jetzt, log);
-  const termine = await KAL.termineLesen(einst, jetzt);
+  const info = await tagesInfoLesen(einst, jetzt, z, (einst.schichten.wochen || 8) * 7);
+  z.schichtRec = await KAL.schichtenSchreiben(einst, jetzt, log, { freieTage: T.freieTage(info), rec: z.schichtRec });
+  const termine = await termineMitOrt(einst, jetzt, z);
+  await zustandSpeichern(z);
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
   const fehlen = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
@@ -55,7 +85,7 @@ async function phaseA() {
   }
   for (const x of schlecht) {
     if (x.ignoriert) continue;
-    await log(`WARNUNG Ort nicht gefunden: "${x.ort}" (${x.fehler}) – nehme ${einst.regeln.fallbackMin} min. In "Planer" → "Gelernte Orte" kannst du die Adresse eintragen.`);
+    await log(`WARNUNG Ort nicht gefunden: "${x.ort}" (${x.fehler}) – nehme ${einst.regeln.fallbackMin} min. In "Planer" → "Einstellungen" → "Gelernte Orte" kannst du die Adresse eintragen.`);
   }
   const { ausgabe, offen } = F.streckenAufteilen(noetig);
   await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), ...offen });
@@ -80,15 +110,44 @@ async function phaseB(text) {
   if (fehlend > 0) await log(`${fehlend} Fahrzeit(en) fehlen, nehme alte Werte oder ${einst.regeln.fallbackMin} min.`);
   F.cacheAktualisieren(cache, erg, D.ymd(jetzt));
   await DAT.schreiben('fahrzeiten.json', cache);
-  const plan = await planenUndSchreiben(einst, aufgaben, cache, jetzt);
+  const plan = await planenUndSchreiben(einst, aufgaben, cache, jetzt, { mitWecker: true });
   return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length };
 }
 
-async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt) {
+// Einkauf, Medikamente, Müll, Folgeaufgaben
+async function alltagVorbereiten(einst, jetzt, z) {
+  const heute = D.ymd(jetzt);
+  const aufgaben = [], mitteilungen = [];
+  try {
+    const ek = AL.einkaufAufgabe(await ERI.einkaufLesen(einst, log), einst.einkauf, heute);
+    if (ek) aufgaben.push(ek);
+  } catch (e) { await log(`WARNUNG Einkaufsliste: ${e}`); }
+  if (einst.medikamente.an) {
+    const meds = await medsLaden();
+    mitteilungen.push(...AL.medMitteilungen(meds, z.medStatus, jetzt, einst.medikamente));
+    const ap = AL.medNachkauf(meds, heute);
+    if (ap) aufgaben.push(ap);
+  }
+  try {
+    mitteilungen.push(...AL.muellMitteilungen(await KAL.muellLesen(einst, jetzt), jetzt, einst.muell));
+  } catch (e) { await log(`WARNUNG Müllkalender: ${e}`); }
+  // offene Folgeaufgaben (höchstens 4 Stunden alt) wieder ankündigen
+  const { aufgaben: alle } = await laden();
+  z.folgen = (z.folgen || []).filter(f => jetzt - new Date(f.erledigtUm) < 4 * 3600000);
+  for (const f of z.folgen) {
+    const a = alle.find(x => x.id === f.id);
+    if (a) mitteilungen.push(...AL.folgeMitteilungen(a, new Date(f.erledigtUm)));
+  }
+  return { aufgaben, mitteilungen };
+}
+
+// opt.mitWecker: vom Kurzbefehl (Wecker werden gestellt); sonst Neuplanen in Scriptable (Wecker bleiben)
+async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
+  const z = await zustandLaden();
   // In der Erinnerungen-App Abgehaktes zuerst übernehmen
   const abgehakt = await ERI.erledigteLesen(einst, log);
   await SON.erledigtMelden(abgehakt.filter(e => SON.istSonder(e.id)));
-  const ueb = AKT.erledigteUebernehmen(aufgabenAlt, abgehakt.filter(e => !SON.istSonder(e.id)));
+  const ueb = AK.erledigteUebernehmen(aufgabenAlt, abgehakt.filter(e => !SON.istSonder(e.id)));
   const aufgaben = ueb.aufgaben;
   if (ueb.meldungen.length) {
     await aufgabenSpeichern(aufgaben);
@@ -101,69 +160,208 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt) {
   } catch (e) {
     await log(`FEHLER bei Geburtstagen/Fristen/Blumen: ${e && e.stack ? e.stack : e}`);
   }
-  const termine = await KAL.termineLesen(einst, jetzt);
-  const plan = P.planen({ termine, aufgaben: aufgaben.concat(extra.aufgaben), einst, jetzt, fahrzeit: k => F.cacheWert(cache, k) });
+  let alltag = { aufgaben: [], mitteilungen: [] };
+  try {
+    alltag = await alltagVorbereiten(einst, jetzt, z);
+  } catch (e) {
+    await log(`FEHLER bei Einkauf/Medikamenten/Müll: ${e && e.stack ? e.stack : e}`);
+  }
+  const sonderStatus = await SON.statusLaden();
+  const alltagAufgaben = SO.statusAnwenden(alltag.aufgaben, sonderStatus, jetzt);
+
+  const termine = await termineMitOrt(einst, jetzt, z);
+  const info = await tagesInfoLesen(einst, jetzt, z, einst.regeln.tage + 1);
+  const sperrTage = T.sperrTage(info);
+  const bestehend = await KAL.planerBloeckeLesen(einst, jetzt);
+  const fest = bestehend.filter(b => b.fest);
+  const vorher = ((await DAT.lesen('plan.json', {})).bloecke || []);
+  const plan = P.planen({
+    termine, aufgaben: aufgaben.concat(extra.aufgaben, alltagAufgaben), einst, jetzt,
+    fahrzeit: k => F.cacheWert(cache, k), sperrTage, fest, vorher,
+  });
+  const terminWarn = AL.terminWarnungen(plan.ablauf);
   await KAL.planerSchreiben(einst, plan, jetzt, log);
   await ERI.schreiben(einst, plan.bloecke, jetzt, log);
   const checks = SO.checklistenFuer(plan.ablauf.fahrten, extra.checklisten, jetzt, einst.regeln.ruheVorAbfahrt);
   if (checks.length) await log(`Checklisten: ${checks.map(c => `${D.kurz(new Date(c.zeit))} ${D.hm(new Date(c.zeit))} ${c.titel}`).join(', ')}`);
   const entfernt = await MIT.alteEntfernen();
   const angekuendigt = await MIT.bloeckeAnkuendigen(plan.bloecke, jetzt);
-  const weitere = await MIT.weitereAnkuendigen(checks.concat(extra.mitteilungen), jetzt, angekuendigt);
-  await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} Aufgaben + ${weitere} weitere (Checklisten, Geburtstage, Fristen) geplant.`);
+  const weitere = await MIT.weitereAnkuendigen(alltag.mitteilungen.concat(checks, extra.mitteilungen), jetzt, angekuendigt);
+  await MIT.wachhundStellen(einst.wachhund, jetzt, `${D.kurz(jetzt)} ${D.hm(jetzt)}`);
+  await log(`Mitteilungen: ${entfernt} alte entfernt, ${angekuendigt} Aufgaben + ${weitere} weitere geplant.`);
 
-  const vorher = await DAT.lesen('plan.json', {});
+  const vorherPlan = await DAT.lesen('plan.json', {});
   const warnText = plan.warnungen.map(w => `${w.name} (fällig ${D.deutschDatum(w.faellig)})`).join(', ');
-  if (warnText && warnText !== vorher.warnText) {
+  const terminText = terminWarn.map(w => w.text).join('; ');
+  if (warnText && warnText !== vorherPlan.warnText) {
     await MIT.sofort('Planer: passt nicht', `Kein Platz in den nächsten ${einst.regeln.tage} Tagen für: ${warnText}`);
   }
+  if (terminText && terminText !== vorherPlan.terminText) await MIT.sofort('Planer: Termine prüfen', terminText);
   if (warnText) await log(`WARNUNG kein Platz: ${warnText}`);
-  for (const b of plan.bloecke) await log(`Block ${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}-${D.hm(new Date(b.end))} ${b.name}`);
+  if (terminText) await log(`WARNUNG Termine: ${terminText}`);
+  for (const b of plan.bloecke) await log(`Block ${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}-${D.hm(new Date(b.end))} ${b.name}${b.fest ? ' (fest)' : ''}`);
   for (const w of plan.wecker) await log(`Wecker ${w.zeit} ${w.name}`);
 
+  // ohne Kurzbefehl bleiben die gestellten Wecker; vorbei sind nur die abgelaufenen
+  const wecker = opt && opt.mitWecker ? plan.wecker : (vorherPlan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
   await DAT.schreiben('plan.json', {
     erstellt: jetzt.toISOString(),
     bloecke: plan.bloecke,
     fahrten: plan.ablauf.fahrten,
-    wecker: plan.wecker,
+    termine: plan.ablauf.termine.map(t => ({ titel: t.titel, start: t.start, end: t.end, art: t.art, ort: t.ort })),
+    tagInfo: plan.tagInfo,
+    tagesInfo: info,
+    luecken: plan.tagesLuecken,
+    wecker,
     warnungen: plan.warnungen,
     warnText,
+    terminText,
   });
-  return plan;
+  z.letzterLauf = jetzt.toISOString();
+  await zustandSpeichern(z);
+  await updatePruefen(jetzt, z);
+  return { ...plan, wecker };
 }
 
-// Aus der App: planen mit gespeicherten Fahrzeiten, ohne Wecker.
+// Einmal am Tag nachsehen, ob es eine neue Version gibt.
+async function updatePruefen(jetzt, z) {
+  const heute = D.ymd(jetzt);
+  if (z.updateGeprueft === heute) return;
+  try {
+    const lokal = await lokaleVersion();
+    if (!lokal) return;
+    const r = new Request(`${QUELLE}manifest.json?t=${Date.now()}`);
+    r.timeoutInterval = 10;
+    const m = JSON.parse(await r.loadString());
+    z.updateGeprueft = heute;
+    await zustandSpeichern(z);
+    if (m.version && m.version !== lokal) {
+      await MIT.sofort('Planer: Update verfügbar', `Version ${m.version} (du hast ${lokal}). In Scriptable "Planer Update" antippen.`);
+      await log(`Update verfügbar: ${m.version} (installiert ${lokal}).`);
+    }
+  } catch (e) { await log(`Update-Prüfung nicht möglich: ${e}`); }
+}
+
+async function lokaleVersion() {
+  try {
+    const f = DAT.fm();
+    const p = f.joinPath(f.joinPath(DAT.basisPfad(), 'planer'), 'version.json');
+    if (!f.fileExists(p)) return null;
+    return JSON.parse(f.readString(p)).version || null;
+  } catch (e) { return null; }
+}
+
+// Neu planen ohne Kurzbefehl (gespeicherte Fahrzeiten, Wecker bleiben)
+async function neuPlanen() {
+  const { einst, aufgaben, cache } = await laden();
+  pruefen(einst);
+  await log('--- Neu planen (ohne Kurzbefehl) ---');
+  return planenUndSchreiben(einst, aufgaben, cache, new Date(), { mitWecker: false });
+}
+
+// Aus der App: Test mit Schichten, aber ohne Fahrzeit-Abfrage und ohne Wecker
 async function ohneKurzbefehl() {
   await phaseA();
-  const { einst, aufgaben, cache } = await laden();
-  return planenUndSchreiben(einst, aufgaben, cache, new Date());
+  return neuPlanen();
 }
 
 function kurzbefehlStarten(name) {
   Safari.open(`shortcuts://run-shortcut?name=${encodeURIComponent(name || KURZBEFEHL)}`);
 }
 
-// Knopf aus Mitteilung
+// Knopf aus Mitteilung oder Tagesplan. Plant danach direkt neu (Aufgaben ändern keine Abfahrten).
 async function aktion(q) {
   q = q || {};
-  if (SON.istSonder(q.id)) {
-    await log(`Knopf: ${await SON.aktion(q, new Date())}`);
-    kurzbefehlStarten(KURZBEFEHL);
+  const jetzt = new Date();
+  const z = await zustandLaden();
+
+  if (q.aktion === 'med') {
+    const r = AL.medGenommen(await medsLaden(), z.medStatus, q.k, jetzt);
+    await medsSpeichern(r.meds);
+    z.medStatus = r.status;
+    await zustandSpeichern(z);
+    const [id, datum, zeit] = String(q.k).split('|');
+    await MIT.entfernen([`planer-med-${id}-${datum}-${String(zeit).replace(':', '')}`]);
+    await gedaechtnis({ typ: 'medikament', id }, jetzt);
+    await log(`Medikament genommen: ${q.k}`);
     return;
   }
+  if (q.aktion === 'folgeok') {
+    z.folgen = (z.folgen || []).filter(f => f.id !== q.id);
+    await zustandSpeichern(z);
+    await MIT.entfernen([`planer-folge-${q.id}`]);
+    await gedaechtnis({ typ: 'folge', id: q.id }, jetzt);
+    await log(`Folgeaufgabe erledigt: ${q.id}`);
+    return;
+  }
+
+  const vorher = await DAT.lesen('plan.json', {});
+  const block = G.passenderBlock(vorher.bloecke, q.id, jetzt);
+  if (SON.istSonder(q.id)) {
+    await log(`Knopf: ${await SON.aktion(q, jetzt)}`);
+    const { einst } = await laden();
+    if (q.aktion === 'erledigt' && /^einkauf-/.test(q.id)) await log(`Einkaufsliste: ${await ERI.einkaufAbhaken(einst, log)} Sachen abgehakt.`);
+    if (q.aktion === 'erledigt' && /^apotheke-/.test(q.id)) await apothekeErledigt();
+  } else {
+    const { aufgaben } = await laden();
+    const r = AK.aktionAnwenden(aufgaben, q, jetzt);
+    await aufgabenSpeichern(r.aufgaben);
+    await log(`Knopf: ${r.meldung}`);
+    const a = r.aufgaben.find(x => x.id === q.id);
+    if (q.aktion === 'erledigt' && a && a.folge) {
+      z.folgen = (z.folgen || []).filter(f => f.id !== a.id).concat([{ id: a.id, erledigtUm: jetzt.toISOString() }]);
+      await zustandSpeichern(z);
+    }
+  }
+  await gedaechtnis({
+    typ: q.aktion, id: q.id,
+    geplantStart: block ? new Date(block.start).toISOString() : null,
+    geplantEnde: block ? new Date(block.end).toISOString() : null,
+  }, jetzt);
+  await neuPlanen();
+}
+
+// Nach "Apotheke erledigt": Vorrat um eine Packung erhöhen (wenn Packungsgröße bekannt)
+async function apothekeErledigt() {
+  const meds = await medsLaden();
+  const neu = meds.map(m => (m.packung && AL.medVorratTage(m) != null && AL.medVorratTage(m) <= (m.nachkaufenTage || 7)
+    ? { ...m, vorrat: (m.vorrat || 0) + m.packung } : m));
+  await medsSpeichern(neu);
+  await log('Apotheke erledigt: Vorrat aufgefüllt, wo die Packungsgröße bekannt ist.');
+}
+
+async function gedaechtnis(ereignis, jetzt) {
+  const g = G.eintragen(await DAT.lesen('gedaechtnis.json', G.leer()), ereignis, jetzt);
+  await DAT.schreiben('gedaechtnis.json', g);
+}
+
+// "Heute keine Aufgaben" an/aus
+async function heuteKeineAufgaben(an) {
+  const z = await zustandLaden();
+  z.keineAufgaben = an ? D.ymd(new Date()) : null;
+  await zustandSpeichern(z);
+  await log(an ? 'Heute keine Aufgaben.' : 'Heute wieder Aufgaben.');
+}
+
+// Rückstand nach Urlaub/Krankheit: alles Überfällige gilt als "nicht nötig"
+async function rueckstandAufloesen() {
   const { aufgaben } = await laden();
-  const r = AK.aktionAnwenden(aufgaben, q, new Date());
+  const r = AK.rueckstandAufloesen(aufgaben, D.ymd(new Date()), P.faelligAm);
   await aufgabenSpeichern(r.aufgaben);
-  await log(`Knopf: ${r.meldung}`);
-  kurzbefehlStarten(KURZBEFEHL); // sofort neu planen
+  await log(`Rückstand aufgelöst: ${r.anzahl} Aufgaben neu ab heute.`);
+  return r.anzahl;
 }
 
 async function fehler(e) {
   await log(`FEHLER: ${e && e.stack ? e.stack : e}`);
   try { await MIT.sofort('Planer: Fehler', String(e && e.message ? e.message : e)); } catch (x) { /* egal */ }
+  await DAT.logSchreiben();
 }
 
+async function abschluss() { await DAT.logSchreiben(); }
+
 module.exports = {
-  KURZBEFEHL, laden, einstellungenSpeichern, aufgabenSpeichern,
-  phaseA, phaseB, ohneKurzbefehl, kurzbefehlStarten, aktion, fehler,
+  KURZBEFEHL, laden, einstellungenSpeichern, aufgabenSpeichern, zustandLaden, zustandSpeichern, medsLaden, medsSpeichern,
+  phaseA, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, heuteKeineAufgaben, rueckstandAufloesen,
+  fehler, abschluss,
 };
