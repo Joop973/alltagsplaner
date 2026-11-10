@@ -180,7 +180,7 @@ Genauso, Uhrzeit 20:00.
 
 - Der Kurzbefehl läuft automatisch um 06:00, um 20:00 und wenn du nach Hause kommst.
 - Abhaken geht auf drei Wegen:
-  - Mitteilung zum Blockstart: **Erledigt**, **Später** oder **Heute nicht** (lange auf die Mitteilung drücken, dann erscheinen die Knöpfe). Danach öffnet sich kurz Scriptable und "Planer planen" startet von selbst.
-  - Scriptable → **Planer** → **Tagesplan** → Aufgabe antippen → Erledigt / Heute nicht / Später.
+  - Mitteilung zum Blockstart: **Erledigt**, **Später**, **Heute nicht** oder **Nicht nötig** (lange auf die Mitteilung drücken, dann erscheinen die Knöpfe). Danach öffnet sich kurz Scriptable und plant direkt neu – ohne den Kurzbefehl, die Wecker bleiben.
+  - Scriptable → **Planer** → **Heute** → Aufgabe antippen → Erledigt / Heute nicht / Später / Nicht nötig.
   - **Erinnerungen-App**, Liste "Planer": dort stehen die Aufgaben von heute und morgen. Abhaken genügt; der Planer liest es beim nächsten Planen ein (spätestens 06:00, 20:00 oder beim Heimkommen).
 - Wecker werden nur für die nächsten 24 Stunden gestellt (Wecker kennen nur eine Uhrzeit, kein Datum).

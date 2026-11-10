@@ -70,7 +70,7 @@ Bewusst weggelassen: Punkte und Spiele, Familienfreigabe, Pomodoro-Timer, eigene
 31. Verstanden werden: Erledigt, Später, Heute nicht, neue Aufgabe, Termin (Kalender wird beim ersten Mal gewählt), Urlaub/frei/krank, Frist, Geburtstag, Besorgung (unterwegs), "Heute keine Aufgaben", Notiz für den Planer.
 32. Fallback: Gibt die Claude-Aktion in Kurzbefehlen ihre Antwort nicht sauber weiter, Claude über Zugangsschlüssel (Cent-Beträge, Schlüssel nur auf dem iPhone).
 
-## Extras Runde 2 (Vorschläge vom 10.11.2026, noch nicht entschieden)
+## Extras Runde 2 (entschieden 11.11.2026: A gebaut, Nr. 39 als Option, Müll optional, Einkaufsliste und Medikamente doch gebaut)
 
 Grundlage: App-Store-Rezensionen und Testberichte zu Putzplan-, Schicht-, Planer- und Geburtstags-Apps.
 Echte Forenbeiträge hat die Suche kaum geliefert. "Eigene Idee" = nicht aus Rezensionen belegt.

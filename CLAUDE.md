@@ -86,6 +86,7 @@ per Mitteilung erinnert und vor jeder Abfahrt einen Wecker stellt.
 Version 1 (Abschnitte 1–7) fertig. Version 2 (Fragerunde 09.11.2026), in dieser Reihenfolge:
 1. Geburtstage (fertig), 2. Fristen (fertig), 3. Checklisten (fertig), 4. Blumen (fertig),
 5. Orte lernen (fertig, einfache Mischung), 6. Dienstplan-PDF-Import (offen), 7. Spracheingabe (offen).
+Version 3 (Plan in docs/plan.md): Stufe 1 + Extras A fertig (11.11.2026). Offen: Stufe 2 Alltag (Aufstehwecker, Tagesabschluss, Regen, Widget), Stufe 3 PDF, Stufe 4 Lernen, Stufe 5 Sprache (über Claude-App-Aktion "Claude fragen", vorhanden).
 
 ## Arbeitsweise
 
@@ -130,3 +131,21 @@ Version 1 (Abschnitte 1–7) fertig. Version 2 (Fragerunde 09.11.2026), in diese
 - Blumen (blumen.json): zufällig alle 3–6 Wochen (wenn Zeit), nicht 14 Tage vor/nach festen Anlässen; Anlässe (Valentinstag, Weltfrauentag, eigene wie Jahrestag/Geburtstag) Pflicht ab 2 Tage vorher bis zum Tag. Als Unterwegs-Aufgabe: auf dem Heimweg direkt nach einem auswärtigen Termin (bis 19:00) oder morgens an Tagen ohne Arbeit; sonst normale Lücke.
 - Einmalige Aufgaben: Felder einmalig, faellig, bis, unterwegs, vorziehen. Status getrennt in sonderstatus.json (IDs beginnen mit geschenk-/frist-/blumen-).
 - Dienstplan-PDF: Spalten = Werktage mit Datum, je Person 4 Zeilen (Beginn, Pause von, Pause bis, Ende; ohne Pause nur Beginn + Ende). Nutzer-Zeile per Name (in der App einstellbar, nie im Repo). Farbig/leer = Urlaub oder frei. PDF enthält Namen von Kolleginnen: NIE ins Repo, auch nicht als Testdatei.
+
+## Entscheidungen Version 3 (10./11.11.2026)
+
+- Hauptmenü: Heute, Woche, Jetzt planen, Aufgaben, Extras, Einstellungen, Log. Heute-Bildschirm mit "Ich habe jetzt Zeit", "Heute keine Aufgaben", "Rückstand auflösen", "Neu planen".
+- Knöpfe (Mitteilung, Heute) planen direkt in Scriptable neu, ohne Kurzbefehl; Wecker bleiben (plan.json behält die zukünftigen).
+- Tagesgrenzen: Arbeitstag 08:00, höchstens 60 min; freier Tag ab 09:30, höchstens 120 min; Aufgaben > 45 min bevorzugt an freien Tagen (bis 3 Tage nach Fälligkeit).
+- Ganztägige Kalendertermine: Stichwörter frei/krank/abwesend (einstellbar). krank und abwesend = keine Schicht, keine Aufgaben. Auch als Zeitraum in der App (ausnahmen mit art).
+- Schicht-Abgleich mit Aufzeichnung (zustand.json schichtRec): Von Hand geänderte/verschobene/gelöschte Schichten bleiben; "Einzelne Schicht ändern" in der App geht vor. Heutige Schicht wird auch nach Beginn eingetragen.
+- Planer-Blöcke im Kalender verschoben = fest (Notiz "|fest"). Planruhe: Blöcke bleiben an ihrer Zeit, solange sie passen (abschaltbar).
+- Ruhezeiten für laute Aufgaben: Option, Standard aus (Nutzerwunsch). Besorgungen nie sonn-/feiertags (Schalter).
+- "Nicht nötig": zählt nicht als erledigt, Abstand neu ab heute (Feld basis). Rückstand auflösen = alles Überfällige "nicht nötig".
+- Folgeaufgaben (Wäsche aufhängen 120 min nach Erledigt, 3 Erinnerungen, Wäsche nur, wenn danach noch zuhause und vor 21:00 fertig).
+- Einkaufsliste = Erinnerungen-Liste "Einkauf"; Besorgung ab 5 Sachen, nach 3 Tagen oder bei "!"; Erledigt hakt die Liste ab (Nutzerwunsch: doch einbauen).
+- Medikamente (medikamente.json, Nutzerwunsch: doch einbauen): Mitteilung mit "Genommen", Nachfrage nach 30 min, 2 Tage voraus, Vorrat, Apotheke als Besorgung.
+- Müllabfuhr: Option aus abonniertem Abfallkalender (Nutzer braucht es nicht, optional).
+- Terminprüfung (Fahrzeit reicht nicht), Ort aus Titel (nach 2 gleichen Orten), Vorlagen (Aufgaben, Fristen), Saison (monate).
+- Wachhund 07:30, Update-Hinweis (planer/version.json vom Update-Script, Manifest-Version erhöhen!), Log gebündelt, Sicherung über DocumentPicker.
+- KI: iPhone 15 ohne Apple Intelligence. Claude-App bietet in Kurzbefehlen "Claude fragen" (Screenshot 11.11.) -> Spracheingabe darüber.
