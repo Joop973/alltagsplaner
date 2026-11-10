@@ -7,6 +7,7 @@ function hole(n) {
 }
 const D = hole('datum');
 const A = hole('ablauf');
+const F = hole('feiertage');
 
 // Zeitraum [s,e) minus belegte Zeiträume
 function abziehen(frei, belegt) {
@@ -23,14 +24,56 @@ function abziehen(frei, belegt) {
   return rest;
 }
 
+// Je Planungstag: Arbeitstag? gesperrt (krank, verreist, "heute keine Aufgaben")? Sonn-/Feiertag?
+function tagInfoBauen({ termine, jetzt, regeln, sperrTage }) {
+  const arbeit = new Set((termine || []).filter(t => t.art === 'arbeit').map(t => D.ymd(new Date(t.start))));
+  const liste = [];
+  for (let i = 0; i < regeln.tage; i++) {
+    const tag = D.plusTage(D.tagesBeginn(jetzt), i);
+    const datum = D.ymd(tag);
+    liste.push({
+      datum,
+      arbeit: arbeit.has(datum),
+      gesperrt: !!(sperrTage && sperrTage.has(datum)),
+      sonntag: tag.getDay() === 0,
+      feiertag: !!F.freierTag(datum, []),
+    });
+  }
+  return liste;
+}
+
+function maxFuer(info, regeln) {
+  if (regeln.maxArbeitstag == null || regeln.maxFreierTag == null) return regeln.maxProTag;
+  return info && info.arbeit ? regeln.maxArbeitstag : regeln.maxFreierTag;
+}
+
+// Darf die Aufgabe an diesem Tag überhaupt geplant werden?
+function tagErlaubt(a, info, regeln, ruhe) {
+  if (!info) return true;
+  const ruhetag = info.sonntag || info.feiertag;
+  if (a.unterwegs && !regeln.besorgungenSonntags && ruhetag) return false; // Läden zu
+  if (ruhe && ruhe.an && a.laut && ruhetag) return false;
+  return true;
+}
+
+// Zeitfenster für laute Aufgaben (ms) oder null
+function ruheFenster(a, datum, ruhe) {
+  if (!(ruhe && ruhe.an && a.laut)) return null;
+  const tag = D.ausYmd(datum);
+  return { von: D.mitUhrzeit(tag, ruhe.von).getTime(), bis: D.mitUhrzeit(tag, ruhe.bis).getTime() };
+}
+
 // Pro Tag die nutzbaren Lücken (Zeiten in ms). Liefert alle Tage, auch ohne Lücken.
-function freieLuecken({ aufenthalte, termine, jetzt, regeln }) {
+function freieLuecken({ aufenthalte, termine, jetzt, regeln, tagInfo }) {
   const ab = D.aufrunden5(jetzt).getTime();
   const belegt = termine.map(t => ({ start: new Date(t.start).getTime(), end: new Date(t.end).getTime() }));
   const tage = [];
   for (let i = 0; i < regeln.tage; i++) {
     const tag = D.plusTage(D.tagesBeginn(jetzt), i);
-    const tStart = D.mitUhrzeit(tag, regeln.tagStart).getTime();
+    const info = tagInfo && tagInfo[i];
+    if (info && info.gesperrt) { tage.push({ datum: D.ymd(tag), luecken: [] }); continue; }
+    const startZeit = info && !info.arbeit && regeln.tagStartFrei ? regeln.tagStartFrei : regeln.tagStart;
+    const tStart = D.mitUhrzeit(tag, startZeit).getTime();
     const tEnde = D.mitUhrzeit(tag, regeln.tagEnde).getTime();
     let frei = [];
     for (const a of aufenthalte) {
@@ -45,10 +88,23 @@ function freieLuecken({ aufenthalte, termine, jetzt, regeln }) {
   return tage;
 }
 
+// Fälligkeit: Abstand ab der letzten Erledigung bzw. ab "nicht nötig" (basis), je nachdem, was später ist.
 function faelligAm(a, heuteYmd) {
   if (a.faellig) return a.faellig; // einmalige Aufgaben (Geschenk, Frist, Blumen)
-  if (!a.letzte) return heuteYmd;
-  return D.ymd(D.plusTage(D.ausYmd(a.letzte), Number(a.intervall)));
+  const von = [a.letzte, a.basis].filter(Boolean).sort().pop();
+  if (!von) return heuteYmd;
+  return D.ymd(D.plusTage(D.ausYmd(von), Number(a.intervall)));
+}
+
+// > 0: seit so vielen Tagen fällig, 0: heute, < 0: in so vielen Tagen
+function dringlichkeit(faellig, heuteYmd) { return D.tageZwischen(D.ausYmd(faellig), D.ausYmd(heuteYmd)); }
+
+function dringlichkeitText(n) {
+  if (n > 1) return `fällig seit ${n} Tagen`;
+  if (n === 1) return 'fällig seit gestern';
+  if (n === 0) return 'heute fällig';
+  if (n === -1) return 'morgen fällig';
+  return `fällig in ${-n} Tagen`;
 }
 
 // Reihenfolge der Tage, an denen ein Termin mit Fälligkeit f probiert wird:
@@ -65,6 +121,18 @@ function tagReihenfolge(f, tage, vorziehen, bis) {
 
 function vorziehenFuer(a, regeln) { return a.vorziehen != null ? a.vorziehen : (regeln.vorziehenTage || 0); }
 
+// Tage für eine Aufgabe: erlaubte Tage; lange Aufgaben zuerst an freien Tagen (bis 3 Tage nach Fälligkeit).
+function tageFuer(o, tage, regeln, tagInfo, ruhe) {
+  let r = tagReihenfolge(o.faellig, tage, vorziehenFuer(o.a, regeln), o.a.bis);
+  if (tagInfo) r = r.filter(i => tagErlaubt(o.a, tagInfo[i], regeln, ruhe));
+  if (tagInfo && r.length && regeln.langAb != null && Number(o.a.dauer) > regeln.langAb) {
+    const grenze = r[0] + 3;
+    const frei = r.filter(i => !tagInfo[i].arbeit && i <= grenze);
+    r = frei.concat(r.filter(i => !frei.includes(i)));
+  }
+  return r;
+}
+
 function aktivUndGueltig(a) {
   return a.aktiv !== false && Number(a.dauer) > 0 && (a.einmalig || Number(a.intervall) > 0);
 }
@@ -75,42 +143,111 @@ function rangVergleich(x, y) {
     || String(x.a.name).localeCompare(String(y.a.name));
 }
 
-// aufgaben: [{id,name,intervall,dauer,pflicht,letzte,aktiv,nichtVor}]
-function aufgabenPlanen({ aufgaben, tagesLuecken, regeln }) {
+function nachId(liste) {
+  const m = new Map();
+  for (const b of (liste || []).slice().sort((x, y) => new Date(x.start) - new Date(y.start))) {
+    if (!m.has(b.aufgabeId)) m.set(b.aufgabeId, []);
+    m.get(b.aufgabeId).push({ start: new Date(b.start).getTime(), end: new Date(b.end).getTime() });
+  }
+  return m;
+}
+
+// aufgaben: [{id,name,intervall,dauer,pflicht,letzte,basis,aktiv,nichtVor,laut,einmalig,faellig,bis}]
+// fest:   [{aufgabeId, start, end}] vom Nutzer im Kalender verschobene Blöcke – gelten, wie sie sind
+// vorher: [{aufgabeId, start, end}] Blöcke des letzten Plans – bleiben, solange sie passen (Planruhe)
+function aufgabenPlanen({ aufgaben, tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab }) {
   if (!tagesLuecken.length) return { bloecke: [], warnungen: [] };
   const tage = tagesLuecken.map(t => ({ datum: t.datum, frei: t.luecken.map(l => ({ ...l })), minuten: 0 }));
   const heute = tage[0].datum, letzter = tage[tage.length - 1].datum;
-  const offen = aufgaben
+  const jetztMs = ab == null ? -Infinity : ab;
+  let offen = aufgaben
     .filter(aktivUndGueltig)
-    .map(a => ({ a, faellig: faelligAm(a, heute) }));
+    .map(a => ({ a, faellig: faelligAm(a, heute), nr: 0 }));
   const bloecke = [], warnungen = [], gewarnt = new Set();
+  const info = i => (tagInfo ? tagInfo[i] : null);
 
-  function suchen(tag, a) {
+  const block = (o, s, e, extra) => ({
+    aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig,
+    einmalig: !!o.a.einmalig, start: new Date(s), end: new Date(e), ...extra,
+  });
+  const naechste = (o, datum) => {
+    if (o.a.einmalig) return;
+    offen.push({ a: { ...o.a, nichtVor: null }, faellig: D.ymd(D.plusTage(D.ausYmd(datum), Number(o.a.intervall))), nr: o.nr + 1 });
+  };
+
+  // 1) Vom Nutzer verschobene Blöcke gelten genau so.
+  const festNach = nachId(fest);
+  for (const o of offen.slice()) {
+    const p = (festNach.get(o.a.id) || [])[0];
+    if (!p || p.end <= jetztMs) continue;
+    const tag = tage.find(t => t.datum === D.ymd(new Date(p.start)));
+    if (!tag) continue;
+    tag.frei = abziehen(tag.frei, [p]);
+    tag.minuten += Math.round((p.end - p.start) / 60000);
+    bloecke.push(block(o, p.start, p.end, { fest: true }));
+    offen = offen.filter(x => x !== o);
+    naechste(o, tag.datum);
+  }
+
+  // Grenzen für eine Aufgabe an einem Tag: frühester Start und spätestes Ende (ms)
+  function grenzen(i, a) {
+    const tag = tage[i];
+    if (tag.minuten + Number(a.dauer) > maxFuer(info(i), regeln)) return null;
+    let von = a.nichtVor ? new Date(a.nichtVor).getTime() : -Infinity, bis = Infinity;
+    const rf = ruheFenster(a, tag.datum, ruhe);
+    if (rf) { von = Math.max(von, rf.von); bis = rf.bis; }
+    return { von, bis };
+  }
+  function belegen(i, a, idx, s) {
+    const tag = tage[i], l = tag.frei[idx], dauer = Number(a.dauer) * 60000;
+    const rest = [];
+    if (s > l.start) rest.push({ start: l.start, end: s });
+    if (l.end > s + dauer) rest.push({ start: s + dauer, end: l.end });
+    tag.frei.splice(idx, 1, ...rest);
+    tag.minuten += Number(a.dauer);
+    return { start: s, end: s + dauer };
+  }
+  function suchen(i, a) {
+    const g = grenzen(i, a);
+    if (!g) return null;
     const dauer = Number(a.dauer) * 60000;
-    if (tag.minuten + Number(a.dauer) > regeln.maxProTag) return null;
-    const nichtVor = a.nichtVor ? new Date(a.nichtVor).getTime() : -Infinity;
-    for (let i = 0; i < tag.frei.length; i++) {
-      const l = tag.frei[i];
-      const s = Math.max(l.start, nichtVor);
-      if (l.end - s < dauer) continue;
-      const rest = [];
-      if (s > l.start) rest.push({ start: l.start, end: s });
-      if (l.end > s + dauer) rest.push({ start: s + dauer, end: l.end });
-      tag.frei.splice(i, 1, ...rest);
-      tag.minuten += Number(a.dauer);
-      return { start: s, end: s + dauer };
+    for (let idx = 0; idx < tage[i].frei.length; idx++) {
+      const l = tage[i].frei[idx];
+      const s = Math.max(l.start, g.von);
+      if (Math.min(l.end, g.bis) - s < dauer) continue;
+      return belegen(i, a, idx, s);
     }
     return null;
   }
+  // Genau die alte Zeit wieder nehmen, wenn sie noch passt
+  function genau(i, a, s) {
+    const g = grenzen(i, a);
+    if (!g) return null;
+    const dauer = Number(a.dauer) * 60000;
+    if (s < g.von || s + dauer > g.bis) return null;
+    const idx = tage[i].frei.findIndex(l => l.start <= s && s + dauer <= l.end);
+    return idx < 0 ? null : belegen(i, a, idx, s);
+  }
 
+  // 2) Alle übrigen in Rangfolge
+  const vorherNach = regeln.planruhe === false ? new Map() : nachId(vorher);
   while (offen.length) {
     offen.sort(rangVergleich);
     const o = offen.shift();
     if (o.faellig > letzter) continue;
-    let platz = null, tag = null;
-    for (const i of tagReihenfolge(o.faellig, tage, vorziehenFuer(o.a, regeln), o.a.bis)) {
-      platz = suchen(tage[i], o.a);
-      if (platz) { tag = tage[i]; break; }
+    const reihenfolge = tageFuer(o, tage, regeln, tagInfo, ruhe);
+    let platz = null, tagIdx = -1;
+    const alt = (vorherNach.get(o.a.id) || [])[o.nr];
+    if (alt && alt.start >= jetztMs && alt.end - alt.start === Number(o.a.dauer) * 60000) {
+      const i = tage.findIndex(t => t.datum === D.ymd(new Date(alt.start)));
+      if (i >= 0 && reihenfolge.includes(i)) {
+        platz = genau(i, o.a, alt.start);
+        if (platz) tagIdx = i;
+      }
+    }
+    for (const i of platz ? [] : reihenfolge) {
+      platz = suchen(i, o.a);
+      if (platz) { tagIdx = i; break; }
     }
     if (!platz) {
       if (o.a.pflicht && !gewarnt.has(o.a.id)) {
@@ -119,13 +256,8 @@ function aufgabenPlanen({ aufgaben, tagesLuecken, regeln }) {
       }
       continue;
     }
-    bloecke.push({
-      aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig,
-      start: new Date(platz.start), end: new Date(platz.end),
-    });
-    if (!o.a.einmalig) {
-      offen.push({ a: { ...o.a, nichtVor: null }, faellig: D.ymd(D.plusTage(D.ausYmd(tag.datum), Number(o.a.intervall))) });
-    }
+    bloecke.push(block(o, platz.start, platz.end));
+    naechste(o, tage[tagIdx].datum);
   }
   bloecke.sort((x, y) => x.start - y.start);
   return { bloecke, warnungen };
@@ -147,8 +279,9 @@ function weckerListe(fahrten, jetzt, regeln) {
 
 // Unterwegs-Aufgaben (z. B. Blumen kaufen): auf dem Heimweg direkt nach einem auswärtigen Termin
 // oder morgens an Tagen ohne Arbeit. Der Heimweg verschiebt sich um die Dauer.
+// Nicht an Sonn- und Feiertagen (Läden zu) und nicht an gesperrten Tagen.
 // Nicht unterzubringende kommen als "rest" zurück und werden wie normale Aufgaben geplant.
-function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln }) {
+function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln, tagInfo, ruhe }) {
   const r = regeln;
   const ab = D.aufrunden5(jetzt).getTime();
   const fahrten = ablauf.fahrten.map(f => ({ ...f }));
@@ -157,6 +290,7 @@ function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln }) {
   const tage = [];
   for (let i = 0; i < r.tage; i++) tage.push({ datum: D.ymd(D.plusTage(D.tagesBeginn(jetzt), i)) });
   if (!aufgaben.length) return { bloecke: [], rest: [], fahrten, aufenthalte, belegt };
+  const infoZu = datum => (tagInfo ? tagInfo.find(t => t.datum === datum) : null);
 
   const vonZeit = r.unterwegsVon || r.tagStart, bisZeit = r.unterwegsBis || '19:00';
   const imFenster = (s, e) => {
@@ -174,11 +308,13 @@ function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln }) {
   });
   for (const t of tage) {
     if (arbeitsTage.has(t.datum)) continue;
-    plaetze.push({ art: 'morgens', start: D.mitUhrzeit(D.ausYmd(t.datum), r.tagStart).getTime(), datum: t.datum });
+    plaetze.push({ art: 'morgens', start: D.mitUhrzeit(D.ausYmd(t.datum), r.tagStartFrei || r.tagStart).getTime(), datum: t.datum });
   }
 
   function passt(p, dauerMs) {
     if (p.start < ab || benutzt.has(p) || !imFenster(p.start, p.start + dauerMs)) return false;
+    const inf = infoZu(p.datum);
+    if (inf && inf.gesperrt) return false;
     if (p.art === 'heimweg') {
       const f = fahrten[p.i];
       const heimAb = new Date(f.ankunft).getTime() + r.pauseNachHeim * 60000;
@@ -196,7 +332,7 @@ function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln }) {
   for (const o of offen) {
     const dauerMs = Number(o.a.dauer) * 60000;
     let gewaehlt = null;
-    for (const i of tagReihenfolge(o.faellig, tage, vorziehenFuer(o.a, r), o.a.bis)) {
+    for (const i of tageFuer(o, tage, r, tagInfo, ruhe)) {
       gewaehlt = plaetze.filter(p => p.datum === tage[i].datum).sort((x, y) => x.start - y.start).find(p => passt(p, dauerMs));
       if (gewaehlt) break;
     }
@@ -213,23 +349,46 @@ function unterwegsPlanen({ aufgaben, ablauf, jetzt, regeln }) {
       belegt.push({ start: new Date(s), end: new Date(e) });
     }
     bloecke.push({
-      aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig,
+      aufgabeId: o.a.id, name: o.a.name, pflicht: !!o.a.pflicht, faellig: o.faellig, einmalig: !!o.a.einmalig,
       start: new Date(s), end: new Date(e), unterwegs: gewaehlt.art,
     });
   }
   return { bloecke, rest, fahrten, aufenthalte, belegt };
 }
 
-// Alles zusammen.
-function planen({ termine, aufgaben, einst, fahrzeit, jetzt }) {
-  const ablauf0 = A.berechneAblauf(termine, { einst, fahrzeit });
-  const u = unterwegsPlanen({ aufgaben: aufgaben.filter(a => a.unterwegs), ablauf: ablauf0, jetzt, regeln: einst.regeln });
-  const ablauf = { ...ablauf0, fahrten: u.fahrten, aufenthalte: u.aufenthalte };
-  const tagesLuecken = freieLuecken({ aufenthalte: u.aufenthalte, termine: ablauf.termine.concat(u.belegt), jetzt, regeln: einst.regeln });
-  const normal = aufgabenPlanen({ aufgaben: aufgaben.filter(a => !a.unterwegs).concat(u.rest), tagesLuecken, regeln: einst.regeln });
-  const bloecke = u.bloecke.concat(normal.bloecke).sort((x, y) => x.start - y.start);
-  const wecker = weckerListe(ablauf.fahrten, jetzt, einst.regeln);
-  return { ablauf, tagesLuecken, bloecke, warnungen: normal.warnungen, wecker };
+// "Ich habe jetzt X Minuten": passende Aufgaben, dringendste zuerst.
+function vorschlaege({ aufgaben, minuten, jetzt, regeln }) {
+  const heute = D.ymd(jetzt);
+  return aufgaben
+    .filter(aktivUndGueltig)
+    .filter(a => Number(a.dauer) <= minuten && !a.unterwegs)
+    .filter(a => !(a.nichtVor && new Date(a.nichtVor) > jetzt))
+    .map(a => ({ a, faellig: faelligAm(a, heute) }))
+    .filter(o => dringlichkeit(o.faellig, heute) >= -vorziehenFuer(o.a, regeln))
+    .sort(rangVergleich);
 }
 
-module.exports = { abziehen, freieLuecken, faelligAm, tagReihenfolge, aufgabenPlanen, unterwegsPlanen, weckerListe, planen };
+// Alles zusammen.
+// sperrTage: Set "YYYY-MM-DD" ohne Aufgaben (krank, verreist, "heute keine Aufgaben")
+function planen({ termine, aufgaben, einst, fahrzeit, jetzt, sperrTage, fest, vorher }) {
+  const regeln = einst.regeln, ruhe = einst.ruhezeiten;
+  const ablauf0 = A.berechneAblauf(termine, { einst, fahrzeit });
+  const tagInfo = tagInfoBauen({ termine: ablauf0.termine, jetzt, regeln, sperrTage });
+  const festIds = new Set((fest || []).map(f => f.aufgabeId));
+  const istUnterwegs = a => a.unterwegs && !festIds.has(a.id);
+  const u = unterwegsPlanen({ aufgaben: aufgaben.filter(istUnterwegs), ablauf: ablauf0, jetzt, regeln, tagInfo, ruhe });
+  const ablauf = { ...ablauf0, fahrten: u.fahrten, aufenthalte: u.aufenthalte };
+  const tagesLuecken = freieLuecken({ aufenthalte: u.aufenthalte, termine: ablauf.termine.concat(u.belegt), jetzt, regeln, tagInfo });
+  const normal = aufgabenPlanen({
+    aufgaben: aufgaben.filter(a => !istUnterwegs(a)).concat(u.rest),
+    tagesLuecken, regeln, tagInfo, ruhe, fest, vorher, ab: D.aufrunden5(jetzt).getTime(),
+  });
+  const bloecke = u.bloecke.concat(normal.bloecke).sort((x, y) => x.start - y.start);
+  const wecker = weckerListe(ablauf.fahrten, jetzt, regeln);
+  return { ablauf, tagesLuecken, tagInfo, bloecke, warnungen: normal.warnungen, wecker };
+}
+
+module.exports = {
+  abziehen, tagInfoBauen, freieLuecken, faelligAm, dringlichkeit, dringlichkeitText, tagReihenfolge,
+  aufgabenPlanen, unterwegsPlanen, vorschlaege, weckerListe, planen,
+};

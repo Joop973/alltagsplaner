@@ -14,15 +14,29 @@ function standardEinstellungen() {
     erinnerungen: { an: true, liste: 'Planer', tage: 2 },
     geburtstage: { kalender: 'Geburtstage', uhrzeit: '06:00', geschenkVorTage: 14, geschenkDauer: 30 },
     fristen: { liste: 'Fristen', uhrzeit: '06:00' },
+    // Ruhezeiten für laute Aufgaben (Option, Standard aus): nicht an Sonn- und Feiertagen, nur von–bis
+    ruhezeiten: { an: false, von: '08:00', bis: '20:00' },
+    // Ganztägige Kalendereinträge: "urlaub*" = Wort beginnt so, sonst ganzes Wort
+    tage: {
+      frei: ['urlaub*', 'frei', 'überstundenfrei', 'gleittag', 'brückentag', 'regenerationstag'],
+      krank: ['krank', 'krankgeschrieben', 'krankmeldung'],
+      weg: ['reise', 'verreist', 'abwesend'],
+    },
+    wachhund: { an: true, zeit: '07:30', laufBis: '06:30' },
     verkehr: { zuhauseArbeit: 'Fahrrad', direktVonArbeit: 'Fahrrad', sonst: 'Auto' },
     regeln: {
       pauseNachHeim: 15,
       ruheVorAbfahrt: 30,
       minLuecke: 20,
-      tagStart: '08:00',
+      tagStart: '08:00',       // Arbeitstage
+      tagStartFrei: '09:30',   // freie Tage: Aufgaben und Besorgungen erst ab hier
       tagEnde: '21:00',
       unterwegsBis: '19:00', // Besorgungen (z. B. Blumen) nur, solange Läden offen sind
-      maxProTag: 90,
+      besorgungenSonntags: false, // Läden sind an Sonn- und Feiertagen zu
+      maxArbeitstag: 60,       // Minuten Aufgaben an Tagen mit Schicht
+      maxFreierTag: 120,       // Minuten Aufgaben an freien Tagen
+      langAb: 45,              // längere Aufgaben bevorzugt an freien Tagen
+      planruhe: true,          // geplante Blöcke bleiben beim Neuplanen an ihrer Zeit, solange sie passen
       tage: 7,
       weckerVorlauf: 5,
       weckerStunden: 24,
@@ -40,7 +54,8 @@ function standardEinstellungen() {
         B: { 1: '08:00-16:00', 2: '08:00-16:00', 3: '08:00-13:00', 4: '08:00-16:00', 5: '08:00-16:00' },
       },
       extraFrei: ['24.12', '31.12'],
-      ausnahmen: [],
+      ausnahmen: [],    // [{von, bis, text, art: 'frei' | 'krank' | 'weg'}]
+      aenderungen: [],  // [{datum, zeit: '08:00-17:30' | null}] einzelne Schicht ändern
     },
   };
 }
@@ -48,7 +63,7 @@ function standardEinstellungen() {
 function standardAufgaben() {
   return [
     { id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: null, aktiv: true },
-    { id: 'saugen', name: 'Staubsaugen', intervall: 7, dauer: 20, pflicht: false, letzte: null, aktiv: true },
+    { id: 'saugen', name: 'Staubsaugen', intervall: 7, dauer: 20, pflicht: false, letzte: null, aktiv: true, laut: true },
     { id: 'bett', name: 'Bettwäsche wechseln', intervall: 14, dauer: 15, pflicht: true, letzte: null, aktiv: true },
     { id: 'waesche', name: 'Wäsche waschen', intervall: 4, dauer: 15, pflicht: true, letzte: null, aktiv: true },
     { id: 'fenster', name: 'Fenster putzen', intervall: 60, dauer: 60, pflicht: false, letzte: null, aktiv: true },

@@ -7,7 +7,7 @@ function hole(n) {
 }
 const D = hole('datum');
 
-// q = {aktion: 'erledigt'|'spaeter'|'heutenicht', id, ende (ISO)} -> {aufgaben (neu), meldung}
+// q = {aktion: 'erledigt'|'spaeter'|'heutenicht'|'nichtnoetig', id, ende (ISO)} -> {aufgaben (neu), meldung}
 function aktionAnwenden(aufgaben, q, jetzt) {
   const a = aufgaben.find(x => x.id === q.id);
   if (!a) return { aufgaben, meldung: `Aufgabe "${q.id}" nicht gefunden.` };
@@ -27,6 +27,12 @@ function aktionAnwenden(aufgaben, q, jetzt) {
   if (q.aktion === 'heutenicht') {
     b.nichtVor = D.plusTage(D.tagesBeginn(jetzt), 1).toISOString();
     return { aufgaben: neu, meldung: `Heute nicht: ${b.name}` };
+  }
+  // Nicht nötig (z. B. noch sauber): zählt nicht als erledigt, der Abstand läuft aber neu ab heute.
+  if (q.aktion === 'nichtnoetig') {
+    b.basis = D.ymd(jetzt);
+    b.nichtVor = null;
+    return { aufgaben: neu, meldung: `Nicht nötig: ${b.name}` };
   }
   return { aufgaben, meldung: `Unbekannte Aktion "${q.aktion}".` };
 }
@@ -48,4 +54,16 @@ function erledigteUebernehmen(aufgaben, erledigt) {
   return { aufgaben: neu, meldungen };
 }
 
-module.exports = { aktionAnwenden, erledigteUebernehmen };
+// Rückstand auflösen (nach Urlaub oder Krankheit): alles Überfällige gilt als "nicht nötig".
+// faelligAm(a, heuteYmd) kommt vom Planer.
+function rueckstandAufloesen(aufgaben, heuteYmd, faelligAm) {
+  let anzahl = 0;
+  const neu = aufgaben.map(a => {
+    if (a.aktiv === false || faelligAm(a, heuteYmd) >= heuteYmd) return { ...a };
+    anzahl++;
+    return { ...a, basis: heuteYmd, nichtVor: null };
+  });
+  return { aufgaben: neu, anzahl };
+}
+
+module.exports = { aktionAnwenden, erledigteUebernehmen, rueckstandAufloesen };
