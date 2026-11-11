@@ -48,10 +48,26 @@ function adresseAusOrt(o) {
   const strasse = [o.thoroughfare, o.subThoroughfare].filter(Boolean).join(' ');
   const ort = [o.postalCode, o.locality].filter(Boolean).join(' ');
   if (strasse && ort) return `${strasse}, ${ort}`;
-  const teile = [o.name, ort || o.locality].filter(Boolean);
+  const teile = [o.name && !(ort || '').includes(o.name) ? o.name : null, ort || o.locality].filter(Boolean);
   if (teile.length) return [...new Set(teile)].join(', ');
   const loc = o.location;
   return loc && typeof loc.latitude === 'number' ? `${loc.latitude},${loc.longitude}` : null;
+}
+
+// Treffer der OpenStreetMap-Suche (Nominatim, format=jsonv2, addressdetails=1) in dieselbe Form
+// wie Scriptables reverseGeocode bringen, damit adresseAusOrt für beide gilt.
+function ausNominatim(x) {
+  if (!x) return null;
+  const a = x.address || {};
+  const lat = Number(x.lat), lon = Number(x.lon);
+  return {
+    name: x.name || null,
+    thoroughfare: a.road || a.pedestrian || a.footway || a.path || a.square || null,
+    subThoroughfare: a.house_number || null,
+    postalCode: a.postcode || null,
+    locality: a.city || a.town || a.village || a.municipality || a.suburb || null,
+    location: Number.isFinite(lat) && Number.isFinite(lon) ? { latitude: lat, longitude: lon } : null,
+  };
 }
 
 // Ort-Text -> Suchvarianten, von genau bis grob. Beispiel:
@@ -72,4 +88,4 @@ function suchVarianten(text) {
   return [...new Set(v)];
 }
 
-module.exports = { suchVarianten, adresseAusOrt, norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };
+module.exports = { suchVarianten, adresseAusOrt, ausNominatim, norm, enthaeltWort, passtAdresse, ortArt, verkehrsmittel, streckenSchluessel };

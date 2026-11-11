@@ -64,6 +64,12 @@ function umgebung({ jetzt, nurRelativ }) {
     static now() { return jetzt.getTime(); }
   }
 
+  // OpenStreetMap-Suche (Nominatim): Texte mit "unbekannt" werden nicht gefunden
+  let suche = async text => (/unbekannt/i.test(text) ? []
+    : [{ lat: '52.1', lon: '7.6', address: { road: `Gefunden ${text.split(',')[0]}`, house_number: '1', postcode: '11111', city: 'Teststadt' } }]);
+  const osm = text => suche(text);
+  const treffer = (road, nr, plz, ort, lat = '52.1', lon = '7.6') => [{ lat, lon, address: { road, house_number: nr, postcode: plz, city: ort } }];
+
   const ctx = {
     console: { log() {} },
     Date: TestDate,
@@ -79,15 +85,16 @@ function umgebung({ jetzt, nurRelativ }) {
     Safari: { open: u => geoeffnet.push(u) },
     Script: { setShortcutOutput: x => { ausgabe = x; }, complete() {} },
     config: { runsInApp: false },
-    // Adresssuche: Texte mit "unbekannt" werden nicht gefunden
-    Location: {
-      geocode: async text => (/unbekannt/i.test(text) ? []
-        : [{ thoroughfare: `Gefunden ${text.split(',')[0]}`, subThoroughfare: '1', postalCode: '11111', locality: 'Teststadt' }]),
-    },
+    // Scriptable hat KEIN Location.geocode (nur current/reverseGeocode)
+    Location: {},
     Alert: class { addAction() {} async presentAlert() { return 0; } },
     // Request: liefert Dateien aus diesem Repo wie raw.githubusercontent.com
     Request: class {
       constructor(url) { this.url = url; }
+      async loadJSON() {
+        if (this.url.startsWith('https://nominatim.openstreetmap.org/search')) return osm(new URL(this.url).searchParams.get('q'));
+        return JSON.parse(await this.loadString());
+      }
       async loadString() {
         const teil = decodeURIComponent(this.url.replace(/^https:\/\/raw\.githubusercontent\.com\/Joop973\/alltagsplaner\/main\//, '').replace(/\?.*$/, ''));
         const datei = path.join(__dirname, '..', teil);
@@ -135,7 +142,7 @@ function umgebung({ jetzt, nurRelativ }) {
   }
 
   const daten = n => path.join(wurzel, 'planer-daten', n);
-  return { ctx, wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, setJetzt: d => { jetzt = d; } };
+  return { ctx, wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, osm, treffer, setJetzt: d => { jetzt = d; }, setSuche: f => { suche = f; } };
 }
 
 for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase b, Knopf Erledigt (Pfade ${nurRelativ ? 'relativ' : 'vom Hauptordner'})`, async () => {
@@ -294,14 +301,14 @@ test('Orte: Varianten, Fehler nicht merken, Standort während des Termins lernen
   fs.writeFileSync(u.daten('aufgaben.json'), '[]');
   const gesucht = [];
   let kaputt = true;
+  // ganzer Text wirft einen Fehler, die bereinigte Variante wird gefunden; "Halle" nie
+  u.setSuche(async text => {
+    gesucht.push(text);
+    if (kaputt && text.includes('(')) throw new Error('Suche kaputt');
+    if (/Halle/.test(text)) return [];
+    return u.treffer('Gefunden', '1', '22222', 'Ort');
+  });
   u.ctx.Location = {
-    // ganzer Text wirft einen Fehler, die bereinigte Variante wird gefunden; "Halle" nie
-    geocode: async text => {
-      gesucht.push(text);
-      if (kaputt && text.includes('(')) throw new Error('geocode kaputt');
-      if (/Halle/.test(text)) return [];
-      return [{ thoroughfare: 'Gefunden', subThoroughfare: '1', postalCode: '22222', locality: 'Ort' }];
-    },
     setAccuracyToHundredMeters() {},
     current: async () => ({ latitude: 52, longitude: 7 }),
     reverseGeocode: async () => [{ thoroughfare: 'Hallenweg', subThoroughfare: '5', postalCode: '33333', locality: 'Sportstadt' }],
@@ -322,7 +329,7 @@ test('Orte: Varianten, Fehler nicht merken, Standort während des Termins lernen
   assert.match(log, /Ort gelernt \(du warst gerade dort\): "Halle"/);
 });
 
-test('Orte: nicht gefundene werden beim nächsten Lauf neu gesucht', async () => {
+test('Orte: nicht gefundene im Hintergrund einmal am Tag neu gesucht, in der App sofort', async () => {
   const u = umgebung({ jetzt: new Date(2026, 10, 12, 9) });
   fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
   fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
@@ -331,14 +338,24 @@ test('Orte: nicht gefundene werden beim nächsten Lauf neu gesucht', async () =>
   }));
   fs.writeFileSync(u.daten('aufgaben.json'), '[]');
   let geht = false;
-  u.ctx.Location = { geocode: async () => { if (!geht) throw new Error('aus'); return [{ name: 'Kino', locality: 'Teststadt' }]; } };
+  u.setSuche(async () => { if (!geht) throw new Error('aus'); return [{ name: 'Kino', lat: '1', lon: '2', address: { city: 'Teststadt' } }]; });
   u.termin('Privat', 'Kino', new Date(2026, 10, 12, 19), new Date(2026, 10, 12, 21), 'Kino am Markt');
   let a = await u.script('Planer Planen.js', {});
   assert.strictEqual(a.anzahl, 0);
   assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "Kino am Markt" \(aus\)/);
   geht = true;
+  let suchen = 0;
+  const alt = u.osm;
+  u.setSuche(async () => { suchen++; return [{ name: 'Kino', lat: '1', lon: '2', address: { city: 'Teststadt' } }]; });
   a = await u.script('Planer Planen.js', {});
-  assert.ok(a.anzahl > 0, 'beim zweiten Mal gefunden');
+  assert.strictEqual(a.anzahl, 0, 'im Hintergrund heute nicht noch einmal');
+  assert.strictEqual(suchen, 0);
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /heute schon gesucht/);
+  u.setJetzt(new Date(2026, 10, 13, 9));
+  u.termin('Privat', 'Kino', new Date(2026, 10, 13, 19), new Date(2026, 10, 13, 21), 'Kino am Markt');
+  a = await u.script('Planer Planen.js', {});
+  assert.ok(a.anzahl > 0, 'am nächsten Tag gefunden');
+  assert.ok(suchen > 0 && alt);
 });
 
 test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen-Liste', async () => {
@@ -532,10 +549,11 @@ test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, 
   }));
   fs.writeFileSync(u.daten('aufgaben.json'), JSON.stringify([{ id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte: null }]));
   const urls = [];
-  u.ctx.Location.geocode = async () => [{ thoroughfare: 'Teststraße', subThoroughfare: '1', postalCode: '11111', locality: 'Teststadt', location: { latitude: 52.123456, longitude: 7.654321 } }];
+  u.setSuche(async () => u.treffer('Teststraße', '1', '11111', 'Teststadt', '52.123456', '7.654321'));
   u.ctx.Request = class {
     constructor(url) { this.url = url; urls.push(url); }
     async loadJSON() {
+      if (this.url.includes('nominatim')) return u.osm('x');
       // Freitag 06:00 und 07:00 Regen 80 %, sonst trocken
       const time = [], precipitation_probability = [];
       for (let d = 12; d <= 14; d++) for (let h = 0; h < 24; h++) {

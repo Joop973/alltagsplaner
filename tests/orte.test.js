@@ -101,3 +101,14 @@ test('Suchvarianten für unordentliche Ort-Texte', () => {
   assert.deepStrictEqual(O.suchVarianten('Sporthalle'), ['Sporthalle']);
   assert.deepStrictEqual(O.suchVarianten(''), []);
 });
+
+test('OpenStreetMap-Treffer -> Adresse und Koordinaten', () => {
+  const O = require('../scripts/planer/core/orte');
+  const x = { lat: '52.5', lon: '7.25', name: '', address: { road: 'Musterweg', house_number: '3', postcode: '12345', town: 'Musterstadt' } };
+  const o = O.ausNominatim(x);
+  assert.strictEqual(O.adresseAusOrt(o), 'Musterweg 3, 12345 Musterstadt');
+  assert.deepStrictEqual(o.location, { latitude: 52.5, longitude: 7.25 });
+  assert.strictEqual(O.ausNominatim(undefined), null);
+  // nur Ort (z. B. Variante "PLZ Ort")
+  assert.strictEqual(O.adresseAusOrt(O.ausNominatim({ lat: '1', lon: '2', name: 'Musterstadt', address: { postcode: '12345', village: 'Musterstadt' } })), '12345 Musterstadt');
+});

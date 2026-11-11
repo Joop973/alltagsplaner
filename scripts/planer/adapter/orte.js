@@ -1,10 +1,10 @@
-// Scriptable: Orte finden und lernen.
+// Scriptable: Orte finden (OpenStreetMap-Suche) und lernen.
 // "Wegzeit abrufen" im Kurzbefehl bricht ab, wenn ein Ort nicht gefunden wird –
 // darum werden Orte hier vorher gesucht und nur gefundene Adressen weitergegeben.
 //
 // Gelernte Orte (planer-daten/orte.json):
 //   eintraege: { "<ort-text klein>": {text, adresse, quelle: suche|hand|standort|ignoriert, datum} }
-//   offen:     { "<ort-text klein>": {text, seit, fehler} }   noch nicht gefunden
+//   offen:     { "<ort-text klein>": {text, seit, fehler, versucht} }   noch nicht gefunden
 'use strict';
 
 function hole(p) {
@@ -30,12 +30,33 @@ async function laden() {
 
 async function speichern(d) { await DAT.schreiben(DATEI, d); }
 
-// Eine Variante mit der Karten-Suche prüfen -> {adresse} oder {fehler}
+// Adresssuche über OpenStreetMap (Nominatim): kostenlos, ohne Konto.
+// Regeln von OpenStreetMap: höchstens 1 Anfrage pro Sekunde, Programm im User-Agent nennen.
+// (Scriptable selbst hat keine Adresssuche, nur reverseGeocode.)
+const SUCHE_URL = 'https://nominatim.openstreetmap.org/search';
+const LAND = 'de';
+const G = typeof globalThis !== 'undefined' ? globalThis : this;
+function warten(ms) {
+  if (ms <= 0 || typeof Timer === 'undefined') return Promise.resolve();
+  return new Promise(r => Timer.schedule(ms, false, r));
+}
+async function osmSuche(text) {
+  const pause = 1100 - (Date.now() - (G.__planerLetzteSuche || 0));
+  await warten(pause);
+  G.__planerLetzteSuche = Date.now();
+  const r = new Request(`${SUCHE_URL}?format=jsonv2&addressdetails=1&limit=1&accept-language=de&countrycodes=${LAND}&q=${encodeURIComponent(String(text))}`);
+  r.headers = { 'User-Agent': 'Alltagsplaner/3 (Scriptable; github.com/Joop973/alltagsplaner)' };
+  r.timeoutInterval = 10;
+  const j = await r.loadJSON();
+  return O.ausNominatim(Array.isArray(j) ? j[0] : null);
+}
+
+// Eine Variante prüfen -> {adresse, ort} oder {fehler}
 async function geocode(text) {
   try {
-    const treffer = await Location.geocode(String(text));
-    const adresse = O.adresseAusOrt(treffer && treffer[0]);
-    return adresse ? { adresse } : { fehler: 'kein Treffer' };
+    const ort = await osmSuche(text);
+    const adresse = O.adresseAusOrt(ort);
+    return adresse ? { adresse, ort } : { fehler: 'kein Treffer' };
   } catch (e) {
     return { fehler: String(e && e.message ? e.message : e) };
   }
@@ -45,11 +66,20 @@ async function suchenMitVarianten(text) {
   let fehler = 'kein Treffer';
   for (const v of O.suchVarianten(text)) {
     const r = await geocode(v);
-    if (r.adresse) return { adresse: r.adresse, variante: v };
+    if (r.adresse) return { adresse: r.adresse, variante: v, ort: r.ort };
     fehler = r.fehler;
   }
   return { adresse: null, fehler };
 }
+
+// Adresse -> {lat, lon} (für das Wetter)
+async function koordinaten(text) {
+  const r = await suchenMitVarianten(text);
+  const l = r.ort && r.ort.location;
+  return l ? { lat: l.latitude, lon: l.longitude } : null;
+}
+
+function imVordergrund() { return typeof config !== 'undefined' && !!config.runsInApp; }
 
 function bekannt(d, k, heute) {
   const e = d.eintraege[k];
@@ -62,21 +92,30 @@ function bekannt(d, k, heute) {
 async function streckenPruefen(strecken, heute, log) {
   const d = await laden();
   const ergebnis = new Map();
+  // Im Hintergrund (Kurzbefehl, Automation) ist die Laufzeit knapp: nicht gefundene Orte
+  // höchstens einmal am Tag neu suchen und insgesamt höchstens 15 Sekunden suchen.
+  const hintergrund = !imVordergrund();
+  const startZeit = Date.now();
   async function suchen(text) {
     const k = O.norm(text);
     if (ergebnis.has(k)) return ergebnis.get(k);
     let r;
     const e = bekannt(d, k, heute);
+    const o = d.offen[k];
     if (e) {
       r = { adresse: e.adresse, ignoriert: e.quelle === 'ignoriert' };
+    } else if (hintergrund && o && o.versucht === heute) {
+      r = { adresse: null, fehler: `${o.fehler || 'kein Treffer'}; heute schon gesucht` };
+    } else if (hintergrund && Date.now() - startZeit > 15000) {
+      r = { adresse: null, fehler: 'Suche verschoben (zu viele neue Orte auf einmal)' };
     } else {
       r = await suchenMitVarianten(text);
       if (r.adresse) {
         d.eintraege[k] = { text, adresse: r.adresse, quelle: 'suche', datum: heute };
         delete d.offen[k];
-        if (log && r.variante !== text) await log(`Ort gefunden über "${r.variante}": ${r.adresse}`);
+        if (log) await log(`Ort gefunden${r.variante !== text ? ` über "${r.variante}"` : ''}: ${r.adresse}`);
       } else {
-        d.offen[k] = { text, seit: (d.offen[k] && d.offen[k].seit) || heute, fehler: r.fehler };
+        d.offen[k] = { text, seit: (o && o.seit) || heute, fehler: r.fehler, versucht: heute };
       }
     }
     ergebnis.set(k, r);
@@ -134,6 +173,7 @@ async function offeneNachsuchen(log) {
       await log(`Ort gefunden (in der App): "${o.text}" = ${r.adresse}`);
     } else {
       o.fehler = r.fehler;
+      o.versucht = heute;
     }
   }
   await speichern(d);
@@ -156,4 +196,4 @@ async function vergessen(text) {
   await speichern(d);
 }
 
-module.exports = { laden, streckenPruefen, standortLernen, offeneNachsuchen, suchenMitVarianten, setzen, vergessen };
+module.exports = { laden, streckenPruefen, standortLernen, offeneNachsuchen, suchenMitVarianten, koordinaten, setzen, vergessen };

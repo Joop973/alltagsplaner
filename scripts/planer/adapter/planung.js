@@ -122,9 +122,9 @@ async function wetterLaden(einst, jetzt, z) {
   try {
     const adr = einst.orte.zuhause.adresse;
     if (!z.heimKoord || z.heimKoord.adresse !== adr) {
-      const g = (await Location.geocode(adr))[0];
-      if (!g || !g.location) { await log('WARNUNG Wetter: Adresse Zuhause nicht gefunden.'); return () => null; }
-      z.heimKoord = { adresse: adr, lat: R.runden(g.location.latitude), lon: R.runden(g.location.longitude) };
+      const g = await ORT.koordinaten(adr);
+      if (!g) { await log('WARNUNG Wetter: Adresse Zuhause nicht gefunden.'); return () => null; }
+      z.heimKoord = { adresse: adr, lat: R.runden(g.lat), lon: R.runden(g.lon) };
     }
     const alt = z.wetter;
     if (!alt || jetzt - new Date(alt.abgerufen) > 2 * 3600000) {
