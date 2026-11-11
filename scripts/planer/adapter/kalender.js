@@ -115,7 +115,7 @@ async function planerBloeckeLesen(einst, jetzt) {
   return liste;
 }
 
-// Planer-Kalender: alle noch nicht beendeten Einträge löschen und neu schreiben.
+// Planer-Kalender: alle noch nicht beendeten Einträge löschen und neu schreiben, alte (vor heute) entfernen.
 async function planerSchreiben(einst, plan, jetzt, log) {
   const cal = await finde(einst.kalender.planer);
   if (!cal) throw new Error(`Kalender "${einst.kalender.planer}" fehlt. Bitte in der Ersteinrichtung anlegen lassen.`);
@@ -124,6 +124,14 @@ async function planerSchreiben(einst, plan, jetzt, log) {
   for (const e of alt) {
     if (e.endDate > jetzt) { e.remove(); geloescht++; }
   }
+  // Einträge von gestern und früher löschen (heutige bleiben bis Mitternacht sichtbar).
+  // Nur eigene: Notiz enthält "planer-". Von Hand angelegte Einträge bleiben.
+  const heute = D.tagesBeginn(jetzt);
+  let vorbei = 0;
+  for (const e of await CalendarEvent.between(D.plusTage(heute, -800), heute, [cal])) {
+    if (e.endDate <= heute && (e.notes || '').includes(MARKE_PLANER)) { e.remove(); vorbei++; }
+  }
+  if (vorbei) await log(`Planer-Kalender: ${vorbei} alte Einträge (vor heute) gelöscht.`);
   let neu = 0;
   for (const b of plan.bloecke) {
     const e = new CalendarEvent();

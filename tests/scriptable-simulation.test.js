@@ -131,6 +131,7 @@ function umgebung({ jetzt, nurRelativ }) {
     const e = new CalendarEvent();
     Object.assign(e, { calendar: kalender.find(k => k.title === kal), title, startDate: start, endDate: end, location: location || '', isAllDay: !!allDay });
     termine.push(e);
+    return e;
   }
 
   const daten = n => path.join(wurzel, 'planer-daten', n);
@@ -164,6 +165,12 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   // Ein Wochenend-Termin ohne Ort im Arbeit-Kalender (nicht von uns) darf nicht gelöscht werden
   u.termin('Arbeit', 'Fremder Eintrag', new Date(2026, 10, 14, 10), new Date(2026, 10, 14, 11), '');
 
+  // Alte Planer-Einträge: vor heute weg, heutige bleiben, fremde (ohne Kennung) bleiben
+  u.termin('Planer', 'Alt 3 Tage', new Date(2026, 10, 9, 18), new Date(2026, 10, 9, 18, 30)).notes = 'planer-aufgabe:bad|x';
+  u.termin('Planer', 'Alt 200 Tage', new Date(2026, 3, 26, 18), new Date(2026, 3, 26, 18, 30)).notes = 'planer-fahrt';
+  u.termin('Planer', 'Heute früh', um(6), um(6, 30)).notes = 'planer-aufgabe:saugen|x';
+  u.termin('Planer', 'Von Hand', new Date(2026, 10, 10, 12), new Date(2026, 10, 10, 13));
+
   // Phase a: heute läuft die Schicht schon (07:00), wird also nicht neu angelegt
   const a = await u.script('Planer Planen.js', {}); // Parameter leer = Phase a
   assert.ok(!a.fehler, a.fehler);
@@ -190,7 +197,11 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   const zeit = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const bloecke = u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe'))
     .map(t => `${zeit(t.startDate)} ${t.title}`);
-  assert.deepStrictEqual(bloecke, ['18:15 Bad putzen', '18:45 Staubsaugen']);
+  assert.deepStrictEqual(bloecke, ['06:00 Heute früh', '18:15 Bad putzen', '18:45 Staubsaugen']);
+  const planerTitel = u.termine.filter(t => t.calendar.title === 'Planer').map(t => t.title);
+  assert.ok(!planerTitel.includes('Alt 3 Tage') && !planerTitel.includes('Alt 200 Tage'), 'alte Einträge gelöscht');
+  assert.ok(planerTitel.includes('Von Hand'), 'Einträge ohne Planer-Kennung bleiben');
+  u.termine.splice(u.termine.findIndex(t => t.title === 'Heute früh'), 1);
   // Fahrten stehen standardmäßig nicht im Kalender
   assert.strictEqual(u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-fahrt')).length, 0);
   assert.strictEqual(u.mitteilungen.filter(m => m.title.startsWith('Jetzt:')).length, 2);
