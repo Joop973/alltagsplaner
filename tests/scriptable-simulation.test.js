@@ -161,6 +161,11 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
     { id: 'bad', name: 'Bad putzen', intervall: 7, dauer: 30, pflicht: true, letzte },
     { id: 'saugen', name: 'Staubsaugen', intervall: 7, dauer: 20, pflicht: false, letzte },
   ]));
+  // Ergo und Training: Adressen von Hand eingetragen -> sicher für "Wegzeit abrufen"
+  fs.writeFileSync(u.daten('orte.json'), JSON.stringify({ eintraege: {
+    'praxisplatz 3, teststadt': { text: 'Praxisplatz 3, Teststadt', adresse: 'Praxisplatz 3, 11111 Teststadt', quelle: 'hand', datum: '2026-11-01' },
+    'sporthalle teststadt': { text: 'Sporthalle Teststadt', adresse: 'Hallenweg 1, 11111 Teststadt', quelle: 'hand', datum: '2026-11-01' },
+  }, offen: {} }));
   u.termin('Privat', 'Ergo', um(17), um(17, 45), 'Praxisplatz 3, Teststadt');
   u.termin('Privat', 'Training', um(20), um(21, 30), 'Sporthalle Teststadt');
   u.termin('Privat', 'Treffen', new Date(2026, 10, 15, 12), new Date(2026, 10, 15, 13), 'unbekannt irgendwo'); // Ort nicht auffindbar
@@ -195,7 +200,8 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   const text = ['RAD', ...Array.from(a2.rad, () => '15 Min.'), 'AUTO', ...Array.from(a2.auto, () => '15 Min.')].join('\n');
   assert.ok(a2.rad.length > 0 && a2.auto.length > 0);
   const alleOrte = [...Array.from(a2.rad), ...Array.from(a2.auto)].flatMap(s => [s.von, s.nach]);
-  assert.ok(alleOrte.every(o => o.startsWith('Gefunden ')), alleOrte.join(' / '));
+  const erlaubt = ['Teststraße 1, 11111 Teststadt', 'Werkweg 2, 11111 Teststadt', 'Praxisplatz 3, 11111 Teststadt', 'Hallenweg 1, 11111 Teststadt'];
+  assert.ok(alleOrte.every(o => erlaubt.includes(o)), alleOrte.join(' / '));
   assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "unbekannt irgendwo"/);
   const b = await u.script('Planer Planen.js', { shortcutParameter: text });
   assert.ok(!b.fehler, b.fehler);
@@ -354,8 +360,14 @@ test('Orte: nicht gefundene im Hintergrund einmal am Tag neu gesucht, in der App
   u.setJetzt(new Date(2026, 10, 13, 9));
   u.termin('Privat', 'Kino', new Date(2026, 10, 13, 19), new Date(2026, 10, 13, 21), 'Kino am Markt');
   a = await u.script('Planer Planen.js', {});
-  assert.ok(a.anzahl > 0, 'am nächsten Tag gefunden');
-  assert.ok(suchen > 0 && alt);
+  assert.ok(suchen > 0 && alt, 'am nächsten Tag neu gesucht');
+  const orte = JSON.parse(fs.readFileSync(u.daten('orte.json'), 'utf8'));
+  assert.ok(orte.eintraege['kino am markt'] && orte.eintraege['kino am markt'].lat === 1);
+  // nur bei OpenStreetMap gefunden -> nicht an "Wegzeit abrufen", sondern geschätzt
+  assert.strictEqual(a.auto.length, 0);
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Fahrzeit geschätzt \(Luftlinie, Auto\)/);
+  const cache = JSON.parse(fs.readFileSync(u.daten('fahrzeiten.json'), 'utf8'));
+  assert.ok(Object.values(cache).some(c => c.geschaetzt));
 });
 
 test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen-Liste', async () => {
@@ -382,7 +394,7 @@ test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen
   assert.ok(titel.includes('Geschenk fehlt noch'), 'Max am 24.11. -> Erinnerung am 17.11.');
   assert.strictEqual(titel.filter(t => t === 'Geburtstag heute').length, 1, 'nur Oma (15.11.), Max (24.11.) ist weiter als 8 Tage');
   const check = u.mitteilungen.find(m => m.title === 'Checkliste: Training');
-  assert.strictEqual(check.trigger.getHours() * 60 + check.trigger.getMinutes(), 19 * 60 + 10); // Abfahrt 19:40 (Ersatz 20 min) - 30
+  assert.strictEqual(check.trigger.getHours() * 60 + check.trigger.getMinutes(), 19 * 60 + 26); // Abfahrt 19:56 (geschätzt 4 min, gleiche Koordinaten) - 30
   // Geschenk für Max ab 10.11. fällig -> heute eingeplant; Frist-Aufgabe (ab 03.11.) auch
   const planer = u.termine.filter(t => t.calendar.title === 'Planer').map(t => t.title);
   assert.ok(planer.some(t => t.startsWith('Geschenk für Max Mustermann')), planer.join(' | '));

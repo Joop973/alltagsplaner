@@ -93,7 +93,20 @@ function cacheWert(cache, key) {
 function istFrisch(cache, key, heuteYmd, maxTage) {
   const e = cache && cache[key];
   if (!e || typeof e.min !== 'number' || !e.datum) return false;
-  return D.tageZwischen(D.ausYmd(e.datum), D.ausYmd(heuteYmd)) <= maxTage;
+  // Schätzungen nur für heute: morgen wird neu geprüft (vielleicht geht dann die echte Abfrage)
+  return D.tageZwischen(D.ausYmd(e.datum), D.ausYmd(heuteYmd)) <= (e.geschaetzt ? 0 : maxTage);
 }
 
-module.exports = { minutenAusText, streckenAufteilen, istPhaseB, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch };
+// Fahrzeit grob aus der Luftlinie schätzen (für Orte, die "Wegzeit abrufen" evtl. nicht kennt).
+// a, b: {lat, lon}. Umweg-Faktor 1,3; Rad 15 km/h + 2 min, Auto 45 km/h + 4 min.
+function schaetzung(a, b, modus) {
+  if (!a || !b || ![a.lat, a.lon, b.lat, b.lon].every(Number.isFinite)) return null;
+  const r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+  const km = 2 * 6371 * Math.asin(Math.sqrt(h)) * 1.3;
+  const min = modus === 'Fahrrad' ? km / 15 * 60 + 2 : km / 45 * 60 + 4;
+  return Math.max(3, Math.round(min));
+}
+
+module.exports = { minutenAusText, streckenAufteilen, istPhaseB, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch, schaetzung };

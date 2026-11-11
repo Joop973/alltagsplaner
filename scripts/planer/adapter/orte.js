@@ -85,11 +85,17 @@ function bekannt(d, k, heute) {
   const e = d.eintraege[k];
   if (!e) return null;
   if (e.quelle !== 'suche') return e; // von Hand, Standort, ignoriert: gilt immer
+  if (!Number.isFinite(e.lat)) return null; // ältere Treffer ohne Koordinaten: einmal neu suchen
   return D.tageZwischen(D.ausYmd(e.datum), D.ausYmd(heute)) <= SUCHE_GUELTIG_TAGE ? e : null;
 }
 
 // strecken [{key, von, nach, modus}] -> {gut: [...mit gefundenen Adressen], schlecht: [{strecke, ort, fehler, ignoriert}]}
-async function streckenPruefen(strecken, heute, log) {
+// gut[i].sicher: beide Orte kennt "Wegzeit abrufen" sicher (Zuhause/Arbeit, von Hand, per Standort gelernt).
+// Nur bei der OpenStreetMap gefundene Adressen können "Wegzeit abrufen" abbrechen lassen
+// ("Keine Konvertierung von Text in Standort") – dafür gibt es Koordinaten für eine Schätzung.
+// sichereTexte: Ort-Texte, die immer sicher sind (eingestellte Adressen Zuhause/Arbeit).
+async function streckenPruefen(strecken, heute, log, sichereTexte) {
+  const sicherSet = new Set((sichereTexte || []).filter(Boolean).map(O.norm));
   const d = await laden();
   const ergebnis = new Map();
   // Im Hintergrund (Kurzbefehl, Automation) ist die Laufzeit knapp: nicht gefundene Orte
@@ -103,7 +109,7 @@ async function streckenPruefen(strecken, heute, log) {
     const e = bekannt(d, k, heute);
     const o = d.offen[k];
     if (e) {
-      r = { adresse: e.adresse, ignoriert: e.quelle === 'ignoriert' };
+      r = { adresse: e.adresse, ignoriert: e.quelle === 'ignoriert', quelle: e.quelle, koord: Number.isFinite(e.lat) ? { lat: e.lat, lon: e.lon } : null };
     } else if (hintergrund && o && o.versucht === heute) {
       r = { adresse: null, fehler: `${o.fehler || 'kein Treffer'}; heute schon gesucht` };
     } else if (hintergrund && Date.now() - startZeit > 15000) {
@@ -111,13 +117,17 @@ async function streckenPruefen(strecken, heute, log) {
     } else {
       r = await suchenMitVarianten(text);
       if (r.adresse) {
-        d.eintraege[k] = { text, adresse: r.adresse, quelle: 'suche', datum: heute };
+        const l = r.ort && r.ort.location;
+        r.quelle = 'suche';
+        r.koord = l ? { lat: l.latitude, lon: l.longitude } : null;
+        d.eintraege[k] = { text, adresse: r.adresse, quelle: 'suche', datum: heute, ...(r.koord || {}) };
         delete d.offen[k];
         if (log) await log(`Ort gefunden${r.variante !== text ? ` über "${r.variante}"` : ''}: ${r.adresse}`);
       } else {
         d.offen[k] = { text, seit: (o && o.seit) || heute, fehler: r.fehler, versucht: heute };
       }
     }
+    r.sicher = sicherSet.has(k) || r.quelle === 'hand' || r.quelle === 'standort';
     ergebnis.set(k, r);
     return r;
   }
@@ -125,7 +135,10 @@ async function streckenPruefen(strecken, heute, log) {
   for (const s of strecken) {
     const von = await suchen(s.von);
     const nach = await suchen(s.nach);
-    if (von.adresse && nach.adresse) gut.push({ ...s, von: von.adresse, nach: nach.adresse });
+    if (von.adresse && nach.adresse) {
+      gut.push({ ...s, von: sicherSet.has(O.norm(s.von)) ? s.von : von.adresse, nach: sicherSet.has(O.norm(s.nach)) ? s.nach : nach.adresse,
+        sicher: von.sicher && nach.sicher, vonKoord: von.koord, nachKoord: nach.koord });
+    }
     else {
       const f = !von.adresse ? { text: s.von, r: von } : { text: s.nach, r: nach };
       schlecht.push({ strecke: s, ort: f.text, fehler: f.r.fehler, ignoriert: !!f.r.ignoriert });
@@ -147,7 +160,7 @@ async function standortLernen(termine, jetzt, log) {
     const adresse = O.adresseAusOrt(g) || `${l.latitude},${l.longitude}`;
     for (const t of laufend) {
       const k = O.norm(t.ort);
-      d.eintraege[k] = { text: t.ort, adresse, quelle: 'standort', datum: D.ymd(jetzt) };
+      d.eintraege[k] = { text: t.ort, adresse, quelle: 'standort', datum: D.ymd(jetzt), lat: l.latitude, lon: l.longitude };
       delete d.offen[k];
       await log(`Ort gelernt (du warst gerade dort): "${t.ort}" = ${adresse}`);
     }
@@ -167,7 +180,8 @@ async function offeneNachsuchen(log) {
   for (const [k, o] of Object.entries(d.offen)) {
     const r = await suchenMitVarianten(o.text);
     if (r.adresse) {
-      d.eintraege[k] = { text: o.text, adresse: r.adresse, quelle: 'suche', datum: heute };
+      const l = r.ort && r.ort.location;
+      d.eintraege[k] = { text: o.text, adresse: r.adresse, quelle: 'suche', datum: heute, ...(l ? { lat: l.latitude, lon: l.longitude } : {}) };
       delete d.offen[k];
       gefunden++;
       await log(`Ort gefunden (in der App): "${o.text}" = ${r.adresse}`);

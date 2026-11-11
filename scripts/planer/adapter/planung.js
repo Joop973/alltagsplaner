@@ -80,11 +80,24 @@ async function phaseA() {
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
   const fehlen = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
-  let { gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute, log);
+  const sichere = [einst.orte.zuhause.adresse, einst.orte.arbeit.adresse];
+  let { gut, schlecht } = await ORT.streckenPruefen(fehlen, heute, log, sichere);
   // Nicht gefunden, aber der Termin läuft gerade? Dann bin ich dort: Standort lernen und neu prüfen.
   if (schlecht.length && await ORT.standortLernen(termine, jetzt, log)) {
-    ({ gut: noetig, schlecht } = await ORT.streckenPruefen(fehlen, heute, log));
+    ({ gut, schlecht } = await ORT.streckenPruefen(fehlen, heute, log, sichere));
   }
+  // Nur sichere Orte an "Wegzeit abrufen" geben (sonst bricht der ganze Kurzbefehl ab),
+  // für die anderen die Fahrzeit aus der Luftlinie schätzen.
+  const noetig = gut.filter(s => s.sicher);
+  let geschaetzt = 0;
+  for (const s of gut.filter(x => !x.sicher)) {
+    const min = F.schaetzung(s.vonKoord, s.nachKoord, s.modus);
+    if (min == null) { await log(`Fahrzeit unbekannt (keine Koordinaten): ${s.von} -> ${s.nach} – nehme ${einst.regeln.fallbackMin} min.`); continue; }
+    cache[s.key] = { min, datum: heute, geschaetzt: true };
+    geschaetzt++;
+    await log(`Fahrzeit geschätzt (Luftlinie, ${s.modus}): ${s.von} -> ${s.nach} = ${min} min`);
+  }
+  if (geschaetzt) await DAT.schreiben('fahrzeiten.json', cache);
   for (const x of schlecht) {
     if (x.ignoriert) continue;
     await log(`WARNUNG Ort nicht gefunden: "${x.ort}" (${x.fehler}) – nehme ${einst.regeln.fallbackMin} min. In "Planer" → "Einstellungen" → "Gelernte Orte" kannst du die Adresse eintragen.`);

@@ -112,3 +112,16 @@ test('OpenStreetMap-Treffer -> Adresse und Koordinaten', () => {
   // nur Ort (z. B. Variante "PLZ Ort")
   assert.strictEqual(O.adresseAusOrt(O.ausNominatim({ lat: '1', lon: '2', name: 'Musterstadt', address: { postcode: '12345', village: 'Musterstadt' } })), '12345 Musterstadt');
 });
+
+test('Fahrzeit aus Luftlinie schätzen', () => {
+  const F = require('../scripts/planer/core/fahrzeiten');
+  const a = { lat: 52.0, lon: 7.0 }, b = { lat: 52.09, lon: 7.0 }; // ca. 10 km
+  assert.strictEqual(F.schaetzung(a, b, 'Auto'), 21);   // 13 km / 45 km/h + 4
+  assert.strictEqual(F.schaetzung(a, b, 'Fahrrad'), 54); // 13 km / 15 km/h + 2
+  assert.strictEqual(F.schaetzung(a, null, 'Auto'), null);
+  // Schätzungen gelten nur am selben Tag
+  const cache = { k: { min: 10, datum: '2026-11-11', geschaetzt: true }, e: { min: 10, datum: '2026-11-11' } };
+  assert.strictEqual(F.istFrisch(cache, 'k', '2026-11-11', 30), true);
+  assert.strictEqual(F.istFrisch(cache, 'k', '2026-11-12', 30), false);
+  assert.strictEqual(F.istFrisch(cache, 'e', '2026-11-12', 30), true);
+});
