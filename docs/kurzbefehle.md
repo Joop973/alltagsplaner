@@ -215,7 +215,7 @@ Hast du den Kurzbefehl schon gebaut: den Text in Schritt 3 durch den neuen erset
 5. Aktion **Script ausführen** (Scriptable). Script: **Planer Sprache**. Parameter: lange drücken → Variable auswählen → Aktion **Text** (Schritt 4).
    **Show When Run: AN** (wichtig – sonst kann der Planer nicht zurückfragen).
 
-So funktioniert es: Du sprichst, Claude bringt den Satz in eine feste Form, der Planer zeigt "Verstanden: …" und führt nach **Ausführen** alles aus. Datum und Uhrzeit rechnet immer der Planer aus, nicht Claude.
+So funktioniert es: Du sprichst, Claude bringt den Satz in eine feste Form, der Planer zeigt "Verstanden: …" und führt nach **Ausführen** alles aus. Über Siri kann Scriptable oft kein Fenster zeigen: Dann führt der Planer es **ohne Rückfrage** aus und schickt eine Mitteilung "Planer: Erledigt" mit dem, was er geändert hat. Datum und Uhrzeit rechnet immer der Planer aus, nicht Claude.
 
 **Ohne Claude** (oder wenn Schritt 3 klemmt): Schritt 3 und Zeile 2 von Schritt 4 weglassen. Dann versteht der Planer feste Sätze:
 - "Bad putzen erledigt", "Staubsaugen nicht nötig", "Fenster heute nicht", "Wäsche später"

@@ -11,16 +11,28 @@ const KAL = hole('adapter/kalender');
 const ERI = hole('adapter/erinnerungen');
 const SON = hole('adapter/sonder');
 const PLAN = hole('adapter/planung');
+const MIT = hole('adapter/mitteilungen');
 
 const log = t => DAT.log(t);
 const BEISPIELE = 'Beispiele:\n- Bad putzen erledigt\n- Staubsaugen nicht nötig\n- Milch und Brot auf die Einkaufsliste\n- Termin Arzt Dienstag 10 Uhr in Musterstadt\n- Training morgen erst um 20 Uhr\n- Arzt von Dienstag auf Donnerstag 11 Uhr verschieben\n- Ich bin krank\n- Urlaub vom 1.12. bis 5.12.\n- Neue Aufgabe Pflanzen gießen alle 3 Tage\n- Frist TÜV am 20.12.';
+
+// Über Siri/Kurzbefehl kann Scriptable oft kein Fenster zeigen (Fehler "AlertBridge").
+// Dann null zurückgeben; der Aufrufer macht ohne Rückfrage weiter und meldet per Mitteilung.
+async function zeigen(alert, alsListe) {
+  try {
+    return alsListe ? await alert.presentSheet() : await alert.presentAlert();
+  } catch (e) {
+    await log(`Hinweis: Fenster nicht anzeigbar (${e && e.message ? e.message : e}) – weiter ohne Rückfrage.`);
+    return null;
+  }
+}
 
 async function info(titel, text) {
   const a = new Alert();
   a.title = titel;
   a.message = text;
   a.addAction('OK');
-  await a.presentAlert();
+  if ((await zeigen(a)) === null) await MIT.sofort(`Planer: ${titel}`, text);
 }
 
 async function kalenderWaehlen(einst) {
@@ -33,7 +45,8 @@ async function kalenderWaehlen(einst) {
   a.message = 'Neue Termine per Sprache landen künftig dort (änderbar in den Einstellungen).';
   for (const n of namen) a.addAction(n);
   a.addCancelAction('Abbrechen');
-  const i = await a.presentSheet();
+  const i = await zeigen(a, true);
+  if (i === null) throw new Error('Kalender für neue Termine bitte einmal in der App wählen: Planer → Heute → Eintippen …');
   if (i === -1) return null;
   einst.sprache = { ...(einst.sprache || {}), kalender: namen[i] };
   await PLAN.einstellungenSpeichern(einst);
@@ -146,11 +159,14 @@ async function verarbeiten(eingang) {
   a.message = ok.map(x => `- ${x.beschreibung}`).join('\n') + (unklar.length ? `\n\nNicht verstanden:\n${unklar.join('\n')}` : '');
   a.addAction('Ausführen');
   a.addCancelAction('Abbrechen');
-  if ((await a.presentAlert()) === -1) return 'Abgebrochen.';
+  const antwort = await zeigen(a);
+  if (antwort === -1) return 'Abgebrochen.';
   for (const x of ok) await ausfuehren(x);
-  await log(`Sprache ausgeführt: ${ok.length} Aktion(en).`);
+  await log(`Sprache ausgeführt: ${ok.length} Aktion(en)${antwort === null ? ' (ohne Rückfrage)' : ''}.`);
   await PLAN.neuPlanen();
-  return `Erledigt: ${ok.map(x => x.beschreibung).join('; ')}`;
+  const text = `Erledigt: ${ok.map(x => x.beschreibung).join('; ')}`;
+  if (antwort === null) await MIT.sofort('Planer: Erledigt', ok.map(x => `- ${x.beschreibung}`).join('\n') + (unklar.length ? `\nNicht verstanden: ${unklar.join('; ')}` : ''));
+  return text;
 }
 
 async function eintippen() {
