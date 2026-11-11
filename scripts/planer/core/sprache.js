@@ -116,6 +116,73 @@ function passend(name, liste) {
 
 function gross(s) { const t = String(s || '').trim(); return t ? t[0].toUpperCase() + t.slice(1) : t; }
 
+// ---------- Termin ändern ----------
+const WOCHENTAG_RE = /(^|\s)(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)(\s|$)/;
+const AENDERN_WORT = /(^|\s)(verschieb\w*|verleg\w*|erst|schon|bereits|anfängt|beginnt|startet|fängt)(\s|$)/;
+const FUELLWORTE = new Set(['dass', 'das', 'der', 'die', 'den', 'dem', 'mein', 'meine', 'meinen', 'meinem', 'meiner', 'termin', 'erst', 'schon', 'bereits',
+  'um', 'uhr', 'am', 'vom', 'von', 'ist', 'wird', 'soll', 'bitte', 'an', 'sag', 'sage', 'planer', 'und', 'auf', 'zu', 'heute', 'morgen', 'übermorgen',
+  'anfängt', 'beginnt', 'startet', 'fängt', 'los', 'geht', 'verschoben', 'verlegt']);
+
+function titelAus(text) {
+  return norm(text).split(' ').filter(w => w && !FUELLWORTE.has(w) && !/^(verschieb|verleg)/.test(w)).join(' ');
+}
+
+// -> {aktion: 'aendern', titel, datum (bisheriger Tag oder null), neuDatum, uhrzeit, dauer} oder null
+function aenderungAus(s, k, gross) {
+  if (!AENDERN_WORT.test(s)) return null;
+  let altTeil = s, neuTeil = s;
+  const auf = /(verschieb|verleg)/.test(s) && s.match(/^(.*?)\s(?:auf|zu)\s(.+)$/);
+  if (auf) { altTeil = auf[1]; neuTeil = auf[2]; }
+  const zeit = zeitAus(neuTeil);
+  const dauer = dauerAus(zeit.rest);
+  let datum = null, neuDatum = null, rest;
+  if (auf) {
+    const a = datumAus(altTeil, k.heute);
+    datum = a.datum;
+    neuDatum = datumAus(dauer.rest, k.heute).datum;
+    rest = a.rest;
+  } else {
+    const a = datumAus(dauer.rest, k.heute);
+    datum = a.datum;
+    rest = a.rest;
+  }
+  const titel = titelAus(rest);
+  if (!titel || (!zeit.zeit && !neuDatum && !dauer.min)) return null;
+  return { aktion: 'aendern', titel: gross(titel), datum, neuDatum, neuWochentag: auf ? WOCHENTAG_RE.test(neuTeil) : false, uhrzeit: zeit.zeit, dauer: dauer.min || null, ort: '' };
+}
+
+// Passenden Termin suchen und neue Zeiten ausrechnen.
+// termine: [{nr, titel, start, end, ganztag, kalender}]
+function aenderungAufloesen(a, k) {
+  const ab = D.tagesBeginn(k.heute);
+  let kand = (k.termine || []).filter(t => new Date(t.end) > ab).map(t => ({ ...t, name: t.titel }))
+    .sort((x, y) => new Date(x.start) - new Date(y.start));
+  if (a.datum) kand = kand.filter(t => D.ymd(new Date(t.start)) === a.datum);
+  const t = passend(a.titel, kand);
+  if (!t) return { aktion: 'unklar', text: `Keinen Termin "${a.titel}"${a.datum ? ` am ${dd(a.datum)}` : ''} gefunden.` };
+  if (!a.uhrzeit && !a.neuDatum && !a.dauer && !a.ort) return { aktion: 'unklar', text: `Was soll sich bei "${t.titel}" ändern?` };
+  const altStart = new Date(t.start), altEnde = new Date(t.end);
+  let tag = a.neuDatum ? D.ausYmd(a.neuDatum) : D.tagesBeginn(altStart);
+  // "von Dienstag auf Donnerstag": der Donnerstag nach dem bisherigen Termin
+  while (a.neuWochentag && tag < D.tagesBeginn(altStart)) tag = D.plusTage(tag, 7);
+  const zeit = a.uhrzeit || (t.ganztag ? null : D.hm(altStart));
+  let start, ende, ganztag = false;
+  if (zeit) {
+    start = D.mitUhrzeit(tag, zeit);
+    ende = D.plusMin(start, a.dauer || (t.ganztag ? 60 : Math.round((altEnde - altStart) / 60000)));
+  } else {
+    ganztag = true;
+    start = tag;
+    ende = D.plusTage(tag, Math.max(1, D.tageZwischen(altStart, altEnde)));
+  }
+  const wann = (d, g) => (g ? D.kurz(d) : `${D.kurz(d)} ${D.hm(d)}`);
+  return {
+    aktion: 'aendern', nr: t.nr, titel: t.titel, kalender: t.kalender, ort: a.ort || '',
+    neuStart: start.toISOString(), neuEnde: ende.toISOString(), ganztag,
+    beschreibung: `"${t.titel}" (${t.kalender}): ${wann(altStart, t.ganztag)} -> ${wann(start, ganztag)}${ganztag ? '' : `–${D.hm(ende)}`}${a.ort ? `, Ort ${a.ort}` : ''}`,
+  };
+}
+
 // ---------- Regeln (ohne KI) ----------
 // kontext: {aufgaben, meds, heute: Date}
 function regeln(satz, k) {
@@ -169,6 +236,9 @@ function regeln(satz, k) {
     const d = datumAus(m[1], k.heute);
     return [{ aktion: 'geburtstag', name: gross(d.rest.replace(/\s(am|hat)$/, '')), datum: d.datum }];
   }
+  // Bestehenden Termin ändern: "Training morgen erst um 20 Uhr", "Arzt von Dienstag auf Donnerstag 10 Uhr verschieben"
+  const aend = aenderungAus(s, k, gross);
+  if (aend) return [aend];
   // Termin: "Termin Arzt Dienstag 10 Uhr in Musterstadt" oder alles mit Datum und Uhrzeit
   const istTermin = /^(termin|treffen|verabredung)\b/.test(s);
   const z = zeitAus(s);
@@ -194,7 +264,7 @@ function jsonAus(text) {
   try { return JSON.parse(t.slice(start, ende + 1)); } catch (e) { return null; }
 }
 
-const ERLAUBT = ['erledigt', 'spaeter', 'heutenicht', 'nichtnoetig', 'einkauf', 'termin', 'aufgabe', 'abwesend', 'keineaufgaben', 'frist', 'geburtstag', 'genommen', 'unklar'];
+const ERLAUBT = ['erledigt', 'spaeter', 'heutenicht', 'nichtnoetig', 'einkauf', 'termin', 'aendern', 'aufgabe', 'abwesend', 'keineaufgaben', 'frist', 'geburtstag', 'genommen', 'unklar'];
 
 // Claude-Felder in dieselbe Form wie die Regeln bringen; Datum hier ausrechnen
 function ausClaude(objekt, k) {
@@ -211,6 +281,15 @@ function ausClaude(objekt, k) {
       const z = x.uhrzeit ? zeitAus(` um ${String(x.uhrzeit).replace(/\s?uhr/i, '')} `).zeit || zeitAus(String(x.uhrzeit)).zeit : null;
       r.uhrzeit = z;
       r.dauer = Number(x.dauer) > 0 ? Math.round(Number(x.dauer)) : 60;
+      r.ort = gross(x.ort || '');
+    }
+    if (aktion === 'aendern') {
+      r.titel = gross(x.titel || x.name || '');
+      r.datum = datumFeld(x.datum, k.heute) || null;
+      r.neuDatum = datumFeld(x.neudatum || x.neuDatum, k.heute) || null;
+      r.neuWochentag = WOCHENTAG_RE.test(norm(x.neudatum || x.neuDatum || ''));
+      r.uhrzeit = x.uhrzeit ? zeitAus(` um ${String(x.uhrzeit).replace(/\s?uhr/i, '')} `).zeit || zeitAus(String(x.uhrzeit)).zeit : null;
+      r.dauer = Number(x.dauer) > 0 ? Math.round(Number(x.dauer)) : null;
       r.ort = gross(x.ort || '');
     }
     if (aktion === 'aufgabe') { r.name = gross(x.name || 'Aufgabe'); r.intervall = Number(x.intervall) > 0 ? Math.round(x.intervall) : 7; r.dauer = Number(x.dauer) > 0 ? Math.round(x.dauer) : 15; }
@@ -233,7 +312,12 @@ function verstehen(eingang, k) {
   const claude = (t.match(/CLAUDE:\s*([\s\S]*)$/i) || [])[1];
   const json = jsonAus(claude != null ? claude : (diktat == null ? t : ''));
   let absichten = json ? ausClaude(json, k) : null;
-  const quelle = absichten && absichten.some(a => a.aktion !== 'unklar') ? 'claude' : 'regeln';
+  let quelle = absichten && absichten.some(a => a.aktion !== 'unklar') ? 'claude' : 'regeln';
+  // Claude hat (z. B. mit alter Anweisung) einen neuen Termin gemacht, gemeint ist aber eine Änderung
+  if (quelle === 'claude' && diktat && !absichten.some(a => a.aktion === 'aendern')) {
+    const r = regeln(diktat.trim(), k);
+    if (r.length === 1 && r[0].aktion === 'aendern' && absichten.every(a => a.aktion === 'termin' || a.aktion === 'unklar')) quelle = 'regeln';
+  }
   if (quelle === 'regeln') absichten = regeln(diktat != null ? diktat.trim() : t.trim(), k);
   return { quelle, absichten: absichten.map(a => aufloesen(a, k)).map(a => (a.beschreibung ? a : { ...a, beschreibung: beschreiben(a) })) };
 }
@@ -253,6 +337,7 @@ function aufloesen(a, k) {
     r.id = med.id;
     r.name = med.name;
   }
+  if (a.aktion === 'aendern') return aenderungAufloesen(a, k);
   if ((a.aktion === 'frist' || a.aktion === 'geburtstag') && !a.datum) return { aktion: 'unklar', text: `Datum für "${a.name}" fehlt.` };
   if (a.aktion === 'einkauf' && !(a.sachen || []).length) return { aktion: 'unklar', text: 'Was soll auf die Einkaufsliste?' };
   r.beschreibung = beschreiben(r);
@@ -269,6 +354,7 @@ function beschreiben(a) {
     case 'nichtnoetig': return `"${a.name}" nicht nötig (Abstand neu ab heute)`;
     case 'einkauf': return `Auf die Einkaufsliste: ${a.sachen.join(', ')}`;
     case 'termin': return `Termin "${a.titel}" am ${dd(a.datum)}${a.uhrzeit ? ` um ${a.uhrzeit} (${a.dauer} min)` : ' (ganztägig)'}${a.ort ? ` in ${a.ort}` : ''}`;
+    case 'aendern': return `Termin "${a.titel}" ändern`;
     case 'aufgabe': return `Neue Aufgabe "${a.name}" alle ${a.intervall} Tage, ${a.dauer} min`;
     case 'abwesend': return `${{ krank: 'Krank', weg: 'Abwesend', frei: 'Frei' }[a.art]} ${a.von === a.bis ? `am ${dd(a.von)}` : `vom ${dd(a.von)} bis ${dd(a.bis)}`}`;
     case 'keineaufgaben': return 'Heute keine Aufgaben';
@@ -280,6 +366,6 @@ function beschreiben(a) {
 }
 
 // Text für den Kurzbefehl "Claude fragen" (steht auch in docs/kurzbefehle.md)
-const CLAUDE_ANWEISUNG = 'Wandle den folgenden gesprochenen Satz für meinen Alltagsplaner in JSON um. Antworte NUR mit JSON, ohne Erklärung, im Format {"aktionen":[{...}]}. Felder: aktion (erledigt, spaeter, heutenicht, nichtnoetig, einkauf, termin, aufgabe, abwesend, keineaufgaben, frist, geburtstag, genommen oder unklar), name (Aufgabe, Medikament, Person oder Frist), sachen (Liste, nur bei einkauf), titel, datum, uhrzeit (HH:MM), dauer (Minuten), ort (bei termin), bis (letzter Tag bei abwesend), art (frei, krank oder weg bei abwesend), intervall (Tage bei aufgabe). Datum genau so übernehmen, wie es gesagt wurde (z. B. "morgen", "Dienstag", "12.3."), nicht ausrechnen. Satz:';
+const CLAUDE_ANWEISUNG = 'Wandle den folgenden gesprochenen Satz für meinen Alltagsplaner in JSON um. Antworte NUR mit JSON, ohne Erklärung, im Format {"aktionen":[{...}]}. Felder: aktion (erledigt, spaeter, heutenicht, nichtnoetig, einkauf, termin, aendern, aufgabe, abwesend, keineaufgaben, frist, geburtstag, genommen oder unklar), name (Aufgabe, Medikament, Person oder Frist), sachen (Liste, nur bei einkauf), titel, datum, uhrzeit (HH:MM), dauer (Minuten), ort (bei termin und aendern), neudatum (nur bei aendern), bis (letzter Tag bei abwesend), art (frei, krank oder weg bei abwesend), intervall (Tage bei aufgabe). termin = neuer Termin. aendern = einen bestehenden Termin verschieben oder ändern (z. B. "Training morgen erst um 20 Uhr", "Arzt von Dienstag auf Donnerstag verschieben"): titel = Name des Termins, datum = bisheriger Tag (nur wenn gesagt), neudatum = neuer Tag, uhrzeit = neue Uhrzeit. Datum genau so übernehmen, wie es gesagt wurde (z. B. "morgen", "Dienstag", "12.3."), nicht ausrechnen. Satz:';
 
-module.exports = { datumAus, datumFeld, zeitAus, dauerAus, passend, regeln, jsonAus, ausClaude, verstehen, beschreiben, CLAUDE_ANWEISUNG };
+module.exports = { datumAus, datumFeld, zeitAus, dauerAus, passend, aenderungAus, aenderungAufloesen, regeln, jsonAus, ausClaude, verstehen, beschreiben, CLAUDE_ANWEISUNG };

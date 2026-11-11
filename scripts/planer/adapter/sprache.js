@@ -13,7 +13,7 @@ const SON = hole('adapter/sonder');
 const PLAN = hole('adapter/planung');
 
 const log = t => DAT.log(t);
-const BEISPIELE = 'Beispiele:\n- Bad putzen erledigt\n- Staubsaugen nicht nötig\n- Milch und Brot auf die Einkaufsliste\n- Termin Arzt Dienstag 10 Uhr in Musterstadt\n- Ich bin krank\n- Urlaub vom 1.12. bis 5.12.\n- Neue Aufgabe Pflanzen gießen alle 3 Tage\n- Frist TÜV am 20.12.';
+const BEISPIELE = 'Beispiele:\n- Bad putzen erledigt\n- Staubsaugen nicht nötig\n- Milch und Brot auf die Einkaufsliste\n- Termin Arzt Dienstag 10 Uhr in Musterstadt\n- Training morgen erst um 20 Uhr\n- Arzt von Dienstag auf Donnerstag 11 Uhr verschieben\n- Ich bin krank\n- Urlaub vom 1.12. bis 5.12.\n- Neue Aufgabe Pflanzen gießen alle 3 Tage\n- Frist TÜV am 20.12.';
 
 async function info(titel, text) {
   const a = new Alert();
@@ -76,6 +76,17 @@ async function ausfuehren(a) {
       await e.save();
       return;
     }
+    case 'aendern': {
+      const e = a.ereignis;
+      if (!e) return;
+      e.startDate = new Date(a.neuStart);
+      e.endDate = new Date(a.neuEnde);
+      e.isAllDay = !!a.ganztag;
+      if (a.ort) e.location = a.ort;
+      await e.save();
+      await log(`Sprache: Termin geändert: ${a.beschreibung}`);
+      return;
+    }
     case 'aufgabe':
       aufgaben.push({ id: `a${Date.now().toString(36)}`, name: a.name, intervall: a.intervall, dauer: a.dauer, pflicht: true, letzte: null, aktiv: true });
       await PLAN.aufgabenSpeichern(aufgaben);
@@ -104,10 +115,25 @@ async function ausfuehren(a) {
 }
 
 // eingang: Diktat/Text oder "DIKTAT: …\nCLAUDE: …" vom Kurzbefehl. Rückgabe: kurze Zusammenfassung.
+// Termine aller Kalender (heute bis 60 Tage), damit "Training morgen erst um 20 Uhr" den Termin findet
+async function termineLesen() {
+  try {
+    const von = D.tagesBeginn(new Date());
+    const ev = await CalendarEvent.between(von, D.plusTage(von, 60), await Calendar.forEvents());
+    return ev;
+  } catch (e) {
+    await log(`WARNUNG Sprache: Termine nicht lesbar: ${e}`);
+    return [];
+  }
+}
+
 async function verarbeiten(eingang) {
   const { aufgaben } = await PLAN.laden();
   const meds = await PLAN.medsLaden();
-  const r = SP.verstehen(eingang, { heute: new Date(), aufgaben, meds });
+  const ereignisse = await termineLesen();
+  const termine = ereignisse.map((e, nr) => ({ nr, titel: e.title, start: e.startDate, end: e.endDate, ganztag: !!e.isAllDay, kalender: e.calendar ? e.calendar.title : '' }));
+  const r = SP.verstehen(eingang, { heute: new Date(), aufgaben, meds, termine });
+  for (const a of r.absichten) if (a.aktion === 'aendern') a.ereignis = ereignisse[a.nr];
   await log(`Sprache (${r.quelle}): ${JSON.stringify(String(eingang).slice(0, 300))} -> ${r.absichten.map(a => a.beschreibung).join(' | ')}`);
   const ok = r.absichten.filter(a => a.aktion !== 'unklar');
   const unklar = r.absichten.filter(a => a.aktion === 'unklar').map(a => a.beschreibung);

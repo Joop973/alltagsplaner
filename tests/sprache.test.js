@@ -61,3 +61,46 @@ test('Claude-Antwort: JSON in Text, Datum rechnet Scriptable', () => {
   assert.strictEqual(SP.verstehen('{"aktion":"abwesend","art":"weg","datum":"1.12.","bis":"3.12."}', k).absichten[0].beschreibung, 'Abwesend vom Di 01.12. bis Do 03.12.');
   assert.match(SP.CLAUDE_ANWEISUNG, /NUR mit JSON/);
 });
+
+test('Bestehenden Termin verschieben (ohne und mit Claude)', () => {
+  const termine = [
+    { nr: 0, titel: 'Training', start: new Date(2026, 10, 13, 19), end: new Date(2026, 10, 13, 20, 30), ganztag: false, kalender: 'Privat' },
+    { nr: 1, titel: 'Training', start: new Date(2026, 10, 15, 19), end: new Date(2026, 10, 15, 20, 30), ganztag: false, kalender: 'Privat' },
+    { nr: 2, titel: 'Arzt Dr. Muster', start: new Date(2026, 10, 17, 10), end: new Date(2026, 10, 17, 10, 30), ganztag: false, kalender: 'Privat' },
+    { nr: 3, titel: 'Vergangen', start: new Date(2026, 10, 10, 10), end: new Date(2026, 10, 10, 11), ganztag: false, kalender: 'Privat' },
+  ];
+  const kt = { ...k, termine };
+  const ein = (satz, claude) => SP.verstehen(claude ? `DIKTAT: ${satz}\nCLAUDE: ${claude}` : satz, kt).absichten;
+  // Satz des Nutzers: Training morgen (Fr 13.11.) 20:00 statt 19:00, Dauer bleibt
+  let a = ein('dass mein Training morgen erst um 20 Uhr anfängt')[0];
+  assert.strictEqual(a.aktion, 'aendern');
+  assert.strictEqual(a.nr, 0);
+  assert.strictEqual(new Date(a.neuStart).getHours(), 20);
+  assert.strictEqual((new Date(a.neuEnde) - new Date(a.neuStart)) / 60000, 90);
+  assert.strictEqual(a.beschreibung, '"Training" (Privat): Fr 13.11. 19:00 -> Fr 13.11. 20:00–21:30');
+  // ohne Tag: nächstes Training
+  a = ein('Training auf 18:30 verschieben')[0];
+  assert.strictEqual(a.nr, 0);
+  assert.strictEqual(new Date(a.neuStart).getHours() * 60 + new Date(a.neuStart).getMinutes(), 18 * 60 + 30);
+  // von Dienstag auf Donnerstag: der Donnerstag nach dem Termin (19.11.), neue Uhrzeit
+  a = ein('Arzt von Dienstag auf Donnerstag 11 Uhr verschieben')[0];
+  assert.strictEqual(a.nr, 2);
+  assert.strictEqual(a.beschreibung, '"Arzt Dr. Muster" (Privat): Di 17.11. 10:00 -> Do 19.11. 11:00–11:30');
+  // nicht vorhanden
+  assert.strictEqual(ein('Kino morgen erst um 21 Uhr')[0].aktion, 'unklar');
+  // neuer Termin bleibt neuer Termin
+  assert.strictEqual(ein('Termin Friseur Freitag 15 Uhr')[0].aktion, 'termin');
+  // Claude mit "aendern"
+  a = ein('Training Sonntag erst um 20 Uhr', '{"aktionen":[{"aktion":"aendern","titel":"Training","datum":"Sonntag","uhrzeit":"20:00"}]}')[0];
+  assert.strictEqual(a.nr, 1);
+  assert.strictEqual(new Date(a.neuStart).getHours(), 20);
+  // Claude mit alter Anweisung macht einen neuen Termin -> Regeln erkennen die Änderung
+  a = ein('Training morgen erst um 20 Uhr', '{"aktionen":[{"aktion":"termin","titel":"Training","datum":"morgen","uhrzeit":"20:00"}]}')[0];
+  assert.strictEqual(a.aktion, 'aendern');
+  assert.strictEqual(a.nr, 0);
+});
+
+test('Anleitung enthält genau die aktuelle Claude-Anweisung', () => {
+  const doku = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'docs', 'kurzbefehle.md'), 'utf8');
+  assert.ok(doku.includes(SP.CLAUDE_ANWEISUNG), 'docs/kurzbefehle.md Abschnitt 5 anpassen');
+});

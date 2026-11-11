@@ -729,9 +729,19 @@ test('Stufe 5: Planer sagen (Claude-Antwort und ohne Claude)', async () => {
   // Abbrechen ändert nichts
   await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: Neue Aufgabe Pflanzen gießen alle 3 Tage' });
   assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8')).length, 1);
+  // Bestehenden Termin verschieben (anderer Kalender als der Sprach-Kalender)
+  u.termin('Arbeit', 'Training', um(13, 19), um(13, 20, 30), 'Sporthalle');
+  antworten.push(0);
+  const aus2 = await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: dass mein Training morgen erst um 20 Uhr anfängt' });
+  assert.match(aus2, /"Training" \(Arbeit\): Fr 13\.11\. 19:00 -> Fr 13\.11\. 20:00–21:30/);
+  const tr = u.termine.filter(t => t.title === 'Training');
+  assert.strictEqual(tr.length, 1, 'kein zweiter Termin');
+  assert.strictEqual(tr[0].startDate.getHours(), 20);
+  assert.strictEqual(tr[0].endDate.getHours() * 60 + tr[0].endDate.getMinutes(), 21 * 60 + 30);
   const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
   assert.ok(!log.includes('FEHLER'), log);
   assert.match(log, /Sprache \(claude\)/);
+  assert.match(log, /Termin geändert/);
 });
 
 test('Manifest enthält alle Scripts', () => {
