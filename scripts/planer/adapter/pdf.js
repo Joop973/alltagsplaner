@@ -50,12 +50,14 @@ async function textStuecke(pfad, log) {
   const b64 = Data.fromFile(pfad).toBase64String();
   const wv = new WebView();
   await wv.loadHTML('<html><head><meta charset="utf-8"></head><body></body></html>');
+  // Beide Teile direkt in die Seite laden. Ist "pdfjsWorker" vorhanden, liest pdf.js ohne
+  // eigenen Hintergrund-Prozess (kein Blob-Worker nötig). ";0" am Ende: Das letzte Ergebnis
+  // muss eine Zahl sein, sonst meldet iOS "Nicht unterstützter Typ".
   await wv.evaluateJavaScript(`${lib}\n;0`, false);
+  await wv.evaluateJavaScript(`${worker}\n;0`, false);
   const js = `
     (async () => {
       try {
-        const wsrc = ${JSON.stringify(worker)};
-        pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([wsrc], { type: 'text/javascript' }));
         const roh = atob(${JSON.stringify(b64)});
         const bytes = new Uint8Array(roh.length);
         for (let i = 0; i < roh.length; i++) bytes[i] = roh.charCodeAt(i);
@@ -73,7 +75,8 @@ async function textStuecke(pfad, log) {
       } catch (e) {
         completion(JSON.stringify({ fehler: String(e && e.message ? e.message : e) }));
       }
-    })();`;
+    })();
+    0;`;
   const ergebnis = JSON.parse(await wv.evaluateJavaScript(js, true));
   if (ergebnis.fehler) throw new Error(`PDF nicht lesbar: ${ergebnis.fehler}`);
   return ergebnis;

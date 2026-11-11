@@ -600,7 +600,14 @@ test('Stufe 3: Dienstplan-PDF teilen, Vorschau, übernehmen, Schichten im Kalend
   let geladen = 0;
   u.ctx.Request = class { constructor(url) { this.url = url; } async loadString() { geladen++; this.response = { statusCode: 200 }; return 'x'.repeat(200000); } async loadJSON() { return {}; } };
   u.ctx.Data = { fromFile: () => ({ toBase64String: () => 'UERG' }) };
-  u.ctx.WebView = class { async loadHTML() {} async evaluateJavaScript(js, asynchron) { return asynchron ? JSON.stringify(items) : 0; } };
+  u.ctx.WebView = class {
+    async loadHTML() {}
+    async evaluateJavaScript(js, asynchron) {
+      // iOS: endet das Script mit einem Promise (z. B. async-IIFE), kommt "Nicht unterstützter Typ"
+      if (/\}\)\(\);?\s*$/.test(js)) throw new Error('Failed evaluating JavaScript with error: Nicht unterstützter Typ');
+      return asynchron ? JSON.stringify(items) : 0;
+    }
+  };
   const antworten = [0, 0, 0]; // Name OK, Übernehmen, Info OK
   const gezeigt = [];
   u.ctx.Alert = class {
