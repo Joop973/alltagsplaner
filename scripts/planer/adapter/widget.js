@@ -1,56 +1,155 @@
-// Scriptable: Widget für Home- und Sperrbildschirm.
+// Scriptable: Widget für Home- und Sperrbildschirm (dunkel, ruhig).
+// Oben: was jetzt ist (oder als Nächstes kommt) mit Restzeit, die live mitläuft, und einem Balken,
+// der schrumpft. Darunter der Tag als Zeitleiste und die nächsten Punkte mit Symbol und Farbe.
 'use strict';
 
 function hole(p) {
   try { return importModule('planer/' + p); } catch (e) { return importModule('../' + p); }
 }
 const D = hole('core/datum');
-const R = hole('core/tagesrhythmus');
+const AN = hole('core/ansicht');
 const DAT = hole('adapter/dateien');
+const ZE = hole('adapter/zeichnen');
 
-const FARBE = { fahrt: '#d9480f', termin: '#495057', aufgabe: '#2b8a3e' };
+const F = AN.FARBEN;
+const farbe = hex => new Color(hex);
+
+function symbol(stack, name, groesse, hex) {
+  const s = SFSymbol.named(name) || SFSymbol.named('circle');
+  s.applyFont(Font.systemFont(groesse));
+  const img = stack.addImage(s.image);
+  img.imageSize = new Size(groesse + 2, groesse + 2);
+  if (hex) img.tintColor = farbe(hex);
+  return img;
+}
+
+function text(stack, t, groesse, hex, fett) {
+  const x = stack.addText(t);
+  x.font = fett ? Font.boldSystemFont(groesse) : Font.systemFont(groesse);
+  if (hex) x.textColor = farbe(hex);
+  x.lineLimit = 1;
+  return x;
+}
+
+// Live laufende Restzeit (iOS zählt selbst weiter)
+function restzeit(stack, bis, groesse, hex) {
+  const d = stack.addDate(bis);
+  d.applyTimerStyle();
+  d.font = Font.systemFont(groesse);
+  if (hex) d.textColor = farbe(hex);
+  d.lineLimit = 1;
+  return d;
+}
+
+async function daten() {
+  const plan = await DAT.lesen('plan.json', null);
+  const ged = await DAT.lesen('gedaechtnis.json', null);
+  return { plan, ged };
+}
+
+// Kopf: Symbol, Titel, "bis 16:55 · noch 0:20:13" und Balken
+function kopf(w, j, jetzt, opt) {
+  const e = j.aktuell || j.naechstes;
+  const z = w.addStack();
+  z.centerAlignContent();
+  symbol(z, AN.symbolFuer(e), opt.gross ? 20 : 16, opt.mono ? null : AN.farbeFuer(e.art));
+  z.addSpacer(8);
+  const titel = j.aktuell ? e.titel : `Als Nächstes: ${e.titel}`;
+  text(z, titel, opt.gross ? 17 : 14, opt.mono ? null : F.text, true);
+  w.addSpacer(3);
+  const u = w.addStack();
+  u.centerAlignContent();
+  const wann = j.aktuell ? `bis ${D.hm(e.end)} · noch ` : `${D.ymd(e.start) === D.ymd(jetzt) ? 'um' : D.kurz(e.start).slice(0, 2)} ${D.hm(e.start)} · in `;
+  text(u, wann, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
+  restzeit(u, j.bis, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
+  w.addSpacer(5);
+  w.addImage(ZE.balken(j.anteil, { breite: opt.breite, hoehe: opt.mono ? 5 : 6, mono: opt.mono, farbe: AN.farbeFuer(e.art) })).imageSize = new Size(opt.breite, opt.mono ? 5 : 6);
+}
+
+function liste(w, punkte, opt) {
+  for (const p of punkte) {
+    const z = w.addStack();
+    z.centerAlignContent();
+    symbol(z, AN.symbolFuer(p), 11, AN.farbeFuer(p.art));
+    z.addSpacer(6);
+    text(z, p.zeit, 12, F.leise);
+    z.addSpacer(6);
+    text(z, p.titel, 12, F.text);
+    w.addSpacer(opt.abstand || 2);
+  }
+}
 
 async function erstellen(familie) {
-  const plan = await DAT.lesen('plan.json', null);
+  const { plan, ged } = await daten();
   const jetzt = new Date();
   const w = new ListWidget();
   w.url = `scriptable:///run/${encodeURIComponent('Planer')}`;
   const sperr = /^accessory/.test(familie);
-  const anzahl = familie === 'large' ? 9 : familie === 'small' ? 3 : sperr ? (familie === 'accessoryInline' ? 1 : 2) : 4;
-  const zeilen = plan ? R.widgetZeilen(plan, jetzt, anzahl) : [];
+  const regeln = (plan && plan.anzeige) || {};
+  const j = plan ? AN.jetztUndDanach(plan, jetzt, regeln) : { aktuell: null, naechstes: null };
+  const e = j.aktuell || j.naechstes;
 
   if (familie === 'accessoryInline') {
-    const z = zeilen[0];
-    w.addText(z ? `${z.zeit} ${z.text}` : 'Planer: nichts geplant');
-  } else {
-    if (!sperr) {
-      const t = w.addText(`Planer · ${D.kurz(jetzt)}`);
-      t.font = Font.boldSystemFont(13);
-      w.addSpacer(4);
-    }
-    if (!zeilen.length) w.addText(plan ? 'Nichts mehr geplant.' : 'Noch kein Plan.').font = Font.systemFont(12);
-    for (const z of zeilen) {
-      const s = w.addStack();
-      const zt = s.addText(`${z.zeit} `);
-      zt.font = Font.boldSystemFont(sperr ? 12 : 13);
-      const tt = s.addText(z.text);
-      tt.font = Font.systemFont(sperr ? 12 : 13);
-      tt.lineLimit = 1;
-      if (!sperr) zt.textColor = new Color(FARBE[z.art] || '#000000');
-    }
-    if (!sperr && plan && plan.warnText) {
-      w.addSpacer(2);
-      const wt = w.addText(`Passt nicht: ${plan.warnText}`);
-      wt.font = Font.systemFont(10);
-      wt.textColor = Color.red();
-      wt.lineLimit = 1;
+    w.addText(e ? `${e.titel} · ${j.aktuell ? `bis ${D.hm(e.end)}` : D.hm(e.start)}` : 'Planer: frei');
+  } else if (familie === 'accessoryCircular') {
+    w.backgroundImage = ZE.ring(e ? j.anteil : 0, { groesse: 76, dicke: 6, mono: true });
+    w.addSpacer();
+    const z = w.addStack();
+    z.addSpacer();
+    symbol(z, e ? AN.symbolFuer(e) : 'checkmark', 16, null);
+    z.addSpacer();
+    if (e) {
+      const t = w.addStack();
+      t.addSpacer();
+      restzeit(t, j.bis, 10, null).centerAlignText();
+      t.addSpacer();
     }
     w.addSpacer();
+  } else if (familie === 'accessoryRectangular') {
+    if (e) kopf(w, j, jetzt, { mono: true, breite: 150 });
+    else text(w, plan ? 'Nichts mehr geplant' : 'Noch kein Plan', 13, null, true);
+    w.addSpacer();
+  } else {
+    w.backgroundColor = farbe(F.hintergrund);
+    const gross = familie === 'large';
+    const klein = familie === 'small';
+    w.setPadding(14, 14, 14, 14);
+    const breite = klein ? 127 : 300;
+    if (!plan) {
+      text(w, 'Noch kein Plan', 14, F.text, true);
+    } else if (!e) {
+      text(w, 'Heute ist nichts mehr geplant.', 14, F.text, true);
+    } else {
+      kopf(w, j, jetzt, { breite, gross });
+    }
+    if (plan && !klein) {
+      w.addSpacer(gross ? 12 : 8);
+      const heute = D.ymd(jetzt);
+      const segs = AN.segmente(plan, heute, regeln);
+      const f = AN.tagesFenster(segs, heute);
+      w.addImage(ZE.zeitleiste(segs, { ...f, breite, hoehe: gross ? 14 : 10, jetzt, stunden: gross })).imageSize = new Size(breite, gross ? 28 : 10);
+      w.addSpacer(gross ? 12 : 7);
+      const anzahl = gross ? 7 : 2;
+      const danach = AN.naechste(plan, jetzt, anzahl + 1, regeln).filter(p => !e || p.start.getTime() !== e.start.getTime() || p.titel !== e.titel);
+      liste(w, danach.slice(0, anzahl), { abstand: gross ? 5 : 2 });
+    }
+    if (plan && klein && j.naechstes && j.aktuell) {
+      w.addSpacer(8);
+      text(w, `Danach ${D.hm(j.naechstes.start)}: ${j.naechstes.titel}`, 11, F.leise);
+    }
+    w.addSpacer();
+    const fuss = w.addStack();
+    const n = AN.geschafftAm(ged, D.ymd(jetzt));
+    if (n) text(fuss, `Heute geschafft: ${n}`, 11, F.erfolg);
+    if (plan && plan.warnText && !klein) {
+      if (n) fuss.addSpacer(10);
+      text(fuss, AN.ohnePlatzText(plan.warnText), 11, F.hinweis);
+    }
   }
-  // nach dem nächsten Punkt neu zeichnen, spätestens in 30 min
-  const naechster = zeilen.length ? new Date(zeilen[0].zeitpunkt) : null;
-  const halbeStunde = D.plusMin(jetzt, 30);
-  w.refreshAfterDate = naechster && naechster > jetzt && naechster < halbeStunde ? naechster : halbeStunde;
+  // neu zeichnen, wenn sich etwas ändert, sonst alle 10 min (Balken)
+  const wechsel = j.bis && j.bis > jetzt ? j.bis : null;
+  const bald = D.plusMin(jetzt, 10);
+  w.refreshAfterDate = wechsel && wechsel < bald ? wechsel : bald;
   return w;
 }
 

@@ -289,6 +289,7 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
     warnungen: plan.warnungen,
     warnText,
     terminText,
+    anzeige: { pause: einst.regeln.pauseNachHeim, ruhe: einst.regeln.ruheVorAbfahrt },
   });
   z.letzterLauf = jetzt.toISOString();
   await zustandSpeichern(z);

@@ -10,6 +10,59 @@ const vm = require('node:vm');
 
 const QUELLE = path.join(__dirname, '..', 'scripts');
 
+// Strenge Nachbildung der Scriptable-Oberfläche (Widget, Zeichnen, Tabellen): nur Funktionen,
+// die es in Scriptable wirklich gibt. Unbekanntes führt zu einem Fehler – wie am iPhone.
+function streng(name, obj) {
+  return new Proxy(obj, {
+    get(t, k) {
+      if (k in t || typeof k === 'symbol' || k === 'then' || k === 'toJSON') return t[k];
+      throw new Error(`${name}.${String(k)} gibt es in Scriptable nicht`);
+    },
+    set(t, k, v) {
+      if (!(k in t)) throw new Error(`${name}.${String(k)} gibt es in Scriptable nicht`);
+      t[k] = v;
+      return true;
+    },
+  });
+}
+function oberflaeche(ctx, prot) {
+  const p = prot || { texte: [], bilder: 0 };
+  const text = t => { p.texte.push(String(t)); return streng('WidgetText', { font: null, textColor: null, lineLimit: 0, minimumScaleFactor: 1, textOpacity: 1, leftAlignText() {}, centerAlignText() {}, rightAlignText() {} }); };
+  const datum = d => { if (!(d instanceof Date)) throw new Error('addDate braucht ein Datum'); p.texte.push(`[Uhr ${d.toISOString()}]`); return streng('WidgetDate', { font: null, textColor: null, lineLimit: 0, applyTimerStyle() {}, applyRelativeStyle() {}, applyTimeStyle() {}, applyDateStyle() {}, applyOffsetStyle() {}, leftAlignText() {}, centerAlignText() {}, rightAlignText() {} }); };
+  const bild = i => { if (!i || !i.istBild) throw new Error('addImage braucht ein Bild'); p.bilder++; return streng('WidgetImage', { imageSize: null, tintColor: null, imageOpacity: 1, cornerRadius: 0, resizable: true, containerRelativeShape: false, leftAlignImage() {}, centerAlignImage() {}, rightAlignImage() {}, applyFittingContentMode() {}, applyFillingContentMode() {} }); };
+  const stapelInhalt = name => ({
+    backgroundColor: null, backgroundImage: null, spacing: 0, url: null, size: null, cornerRadius: 0, borderWidth: 0, borderColor: null,
+    addText: text, addDate: datum, addImage: bild, addSpacer() {}, addStack: () => stapel(),
+    setPadding() {}, layoutHorizontally() {}, layoutVertically() {}, topAlignContent() {}, centerAlignContent() {}, bottomAlignContent() {}, useDefaultPadding() {},
+    _name: name,
+  });
+  const stapel = () => streng('WidgetStack', stapelInhalt('WidgetStack'));
+  ctx.ListWidget = function ListWidget() {
+    const w = { ...stapelInhalt('ListWidget'), refreshAfterDate: null, presentSmall: async () => {}, presentMedium: async () => {}, presentLarge: async () => {}, presentAccessoryCircular: async () => {}, presentAccessoryRectangular: async () => {}, presentAccessoryInline: async () => {} };
+    delete w.layoutHorizontally; delete w.layoutVertically; delete w.topAlignContent; delete w.centerAlignContent; delete w.bottomAlignContent; delete w.size; delete w.cornerRadius; delete w.borderWidth; delete w.borderColor;
+    return streng('ListWidget', w);
+  };
+  const bildObjekt = () => ({ istBild: true, size: { width: 1, height: 1 } });
+  ctx.SFSymbol = { named: n => { p.symbole = (p.symbole || []).concat(n); return streng('SFSymbol', { image: bildObjekt(), applyFont() {}, applyLightWeight() {}, applyRegularWeight() {}, applyMediumWeight() {}, applySemiboldWeight() {}, applyBoldWeight() {} }); } };
+  ctx.Size = function Size(w, h) { this.width = w; this.height = h; };
+  ctx.Point = function Point(x, y) { this.x = x; this.y = y; };
+  ctx.Rect = function Rect(x, y, w, h) { if ([x, y, w, h].some(v => typeof v !== 'number' || Number.isNaN(v))) throw new Error('Rect braucht Zahlen'); Object.assign(this, { x, y, width: w, height: h }); };
+  ctx.Path = function Path() { return streng('Path', { move() {}, addLine() {}, addLines(l) { if (!Array.isArray(l)) throw new Error('addLines braucht Liste'); }, addRect() {}, addRoundedRect(r, a, b) { if (!(r instanceof ctx.Rect) || typeof a !== 'number' || typeof b !== 'number') throw new Error('addRoundedRect(rect, w, h)'); }, addEllipse() {}, addQuadCurve() {}, addCurve() {}, closeSubpath() {} }); };
+  ctx.DrawContext = function DrawContext() {
+    return streng('DrawContext', {
+      size: null, opaque: true, respectScreenScale: false,
+      getImage() { p.gezeichnet = (p.gezeichnet || 0) + 1; return bildObjekt(); },
+      setFillColor() {}, setStrokeColor() {}, setLineWidth() {}, setFont() {}, setTextColor() {}, setTextAlignedLeft() {}, setTextAlignedCenter() {}, setTextAlignedRight() {},
+      fillRect(r) { if (!(r instanceof ctx.Rect)) throw new Error('fillRect braucht Rect'); }, fillEllipse() {}, strokeRect() {}, strokeEllipse() {}, addPath() {}, fillPath() {}, strokePath() {},
+      drawText() {}, drawTextInRect(t, r) { if (!(r instanceof ctx.Rect)) throw new Error('drawTextInRect braucht Rect'); }, drawImageAtPoint() {}, drawImageInRect() {},
+    });
+  };
+  ctx.Color = Object.assign(function Color(hex, a) { if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) throw new Error(`Farbe ${hex}`); this.hex = hex; this.alpha = a; },
+    { red: () => 'rot', blue: () => 'blau', gray: () => 'grau', white: () => 'weiß', black: () => 'schwarz', dynamic: (a) => a });
+  ctx.Font = { boldSystemFont: () => 'f', systemFont: () => 'f', mediumSystemFont: () => 'f', semiboldSystemFont: () => 'f' };
+  return p;
+}
+
 function umgebung({ jetzt, nurRelativ }) {
   const wurzel = fs.mkdtempSync(path.join(os.tmpdir(), 'scriptable-'));
   fs.cpSync(QUELLE, wurzel, { recursive: true });
@@ -534,13 +587,17 @@ test('Menüs: einmal durch alle Bildschirme klicken (keine Laufzeitfehler)', asy
     async presentSheet() { gezeigt.push(this.title); return antworten.length ? antworten.shift() : -1; }
     async presentAlert() { gezeigt.push(this.title); return antworten.length ? antworten.shift() : -1; }
   }
-  class UITable { constructor() { this.rows = []; } addRow(r) { this.rows.push(r); } async present() { gezeigt.push(`Tabelle ${this.rows.length}`); } }
-  class UITableRow { addText(a, b) { this.texte = [a, b]; return { titleFont: null, titleColor: null, subtitleFont: null }; } }
-  Object.assign(u.ctx, {
-    Alert, UITable, UITableRow,
-    Color: Object.assign(function Color() {}, { red: () => 'rot', blue: () => 'blau', gray: () => 'grau' }),
-    Font: { boldSystemFont: () => 'f', systemFont: () => 'f' },
-  });
+  oberflaeche(u.ctx);
+  const zelle = () => streng('UITableCell', { titleFont: null, titleColor: null, subtitleFont: null, subtitleColor: null, widthWeight: 0, onTap: null, dismissOnTap: false, leftAligned() {}, centerAligned() {}, rightAligned() {} });
+  class UITable { constructor() { this.rows = []; this.showSeparators = false; } addRow(r) { this.rows.push(r); } removeAllRows() { this.rows = []; } reload() {} async present() { gezeigt.push(`Tabelle ${this.rows.length}`); } }
+  function UITableRow() {
+    return streng('UITableRow', {
+      height: 44, backgroundColor: null, isHeader: false, cellSpacing: 0, onSelect: null, dismissOnSelect: true,
+      addText(a, b) { this.texte = [a, b]; return zelle(); }, addImage(i) { if (!i || !i.istBild) throw new Error('addImage braucht ein Bild'); return zelle(); },
+      addButton() { return zelle(); }, addCell() {}, texte: null,
+    });
+  }
+  Object.assign(u.ctx, { Alert, UITable, UITableRow });
   await u.script('Planer.js', {});
   assert.deepStrictEqual(antworten, [], `nicht alle Antworten verbraucht; gezeigt: ${gezeigt.join(' > ')}`);
   for (const t of ['Planer', 'Aufgaben', 'Extras', 'Einkaufsliste', 'Medikamente', 'Tablette', 'Geburtstage', 'Fristen', 'Checklisten', 'Blumen', 'Müllabfuhr (Option)', 'Einstellungen', 'Zeiten und Regeln', 'Urlaub / krank / abwesend', 'Einzelne Schicht ändern']) {
@@ -594,18 +651,25 @@ test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, 
   const morgen = u.mitteilungen.find(m => m.title === 'Dein Tag · Fr 13.11.');
   assert.ok(morgen && morgen.trigger.getHours() === 5, titel.join(' | '));
 
-  // Widget
-  const gezeichnet = [];
-  class Stapel { addText(t) { gezeichnet.push(t); return {}; } }
-  u.ctx.ListWidget = class { addText(t) { gezeichnet.push(t); return {}; } addSpacer() {} addStack() { return new Stapel(); } };
-  u.ctx.Font = { boldSystemFont: () => 'f', systemFont: () => 'f' };
-  u.ctx.Color = Object.assign(function Color() {}, { red: () => 'rot' });
-  let gesetzt = null;
-  u.ctx.Script.setWidget = w => { gesetzt = w; };
-  u.ctx.config = { runsInWidget: true, widgetFamily: 'medium' };
-  await u.script('Planer Widget.js', {});
-  assert.ok(gesetzt && gesetzt.url.includes('Planer'));
-  assert.ok(gezeichnet.includes('Bad putzen'), gezeichnet.join(' | '));
+  // Widget: alle Größen, Home und Sperrbildschirm
+  for (const familie of ['small', 'medium', 'large', 'accessoryRectangular', 'accessoryCircular', 'accessoryInline']) {
+    const prot = oberflaeche(u.ctx);
+    let gesetzt = null;
+    u.ctx.Script.setWidget = w => { gesetzt = w; };
+    u.ctx.config = { runsInWidget: true, widgetFamily: familie };
+    await u.script('Planer Widget.js', {});
+    assert.ok(gesetzt && gesetzt.url.includes('Planer'), familie);
+    assert.ok(gesetzt.refreshAfterDate > um(12, 9), familie);
+    const alles = prot.texte.join(' | ');
+    if (familie === 'medium') {
+      // 09:00: als Nächstes der Block 18:15? Erst kommt die Ruhe vor dem Training (Abfahrt), davor Bad putzen
+      assert.match(alles, /Bad putzen/, alles);
+      assert.match(alles, /\[Uhr /, 'Restzeit läuft live');
+      assert.ok(prot.bilder >= 3, 'Balken, Zeitleiste, Symbole');
+      assert.ok(prot.symbole.includes('shower.fill'), prot.symbole.join(','));
+    }
+    if (familie === 'accessoryInline') assert.strictEqual(prot.texte.length, 1, alles);
+  }
   u.ctx.config = { runsInApp: false };
 
   // Tagesabschluss-Knopf "Alles erledigt"
