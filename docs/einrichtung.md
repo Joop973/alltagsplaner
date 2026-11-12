@@ -24,7 +24,7 @@ Abhaken, was schon erledigt ist. Ausführliche Kurzbefehl-Schritte: `docs/kurzbe
 ### 3. Widget (3 min)
 1. Home-Bildschirm lange drücken → **Bearbeiten** → **Widget hinzufügen** → **Scriptable** → mittlere Größe.
 2. Widget antippen → Script **Planer Widget** → "When Interacting": **Run Script**.
-3. Optional Sperrbildschirm: Sperrbildschirm lange drücken → **Anpassen** → Feld unter der Uhr → Scriptable → Script **Planer Widget**.
+3. Sperrbildschirm: Sperrbildschirm lange drücken → **Anpassen** → Feld unter der Uhr → Scriptable → rechteckig und/oder rund → Script **Planer Widget** (Details: `docs/kurzbefehle.md` Abschnitt 4).
 
 ### 4. Automation "Verlassen" (3 min)
 Kurzbefehle → **Automation** → **+** → **Verlassen** → deine Adresse → **Sofort ausführen** → neuer leerer Kurzbefehl → **Script ausführen** → **Planer Abfahrt** → Show When Run **aus**.

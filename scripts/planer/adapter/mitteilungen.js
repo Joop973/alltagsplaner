@@ -36,6 +36,7 @@ async function bloeckeAnkuendigen(bloecke, jetzt) {
     m.sound = 'default';
     m.setTriggerDate(start);
     m.addAction('Erledigt', aktionsUrl('erledigt', b));
+    m.addAction('5 Minuten anfangen', aktionsUrl('fuenf', b));
     m.addAction('Später', aktionsUrl('spaeter', b));
     m.addAction('Heute nicht', aktionsUrl('heutenicht', b));
     if (!b.einmalig) m.addAction('Nicht nötig', aktionsUrl('nichtnoetig', b));
@@ -115,4 +116,30 @@ async function sofort(titel, text) {
   await m.schedule();
 }
 
-module.exports = { alteEntfernen, bloeckeAnkuendigen, weitereAnkuendigen, wachhundStellen, entfernen, sofort, aktionsUrl };
+// "Nur 5 Minuten anfangen": in 5 Minuten nachfragen. Eigene Kennung (nicht "planer-"),
+// damit ein Neuplanen in der Zwischenzeit sie nicht löscht.
+async function fuenfMinuten(id, name, ende, jetzt) {
+  const m = new Notification();
+  m.identifier = `fuenf-${PRAEFIX}${id}`;
+  m.threadIdentifier = 'planer';
+  m.title = `5 Minuten um: ${name}`;
+  m.body = 'Gut angefangen. Fertig, weitermachen oder später?';
+  m.sound = 'default';
+  m.setTriggerDate(new Date(jetzt.getTime() + 5 * 60000));
+  m.addAction('Erledigt', url({ aktion: 'erledigt', id, ende }));
+  m.addAction('Später', url({ aktion: 'spaeter', id, ende }));
+  await m.schedule();
+}
+
+// Kleine Bestätigung mit Erfolgston (Scriptable-Ton "piano_success")
+async function erfolg(titel, text) {
+  const m = new Notification();
+  m.identifier = `erfolg-${Date.now()}`;
+  m.threadIdentifier = 'planer-erfolg';
+  m.title = titel;
+  m.body = text;
+  m.sound = 'piano_success';
+  await m.schedule();
+}
+
+module.exports = { fuenfMinuten, erfolg, alteEntfernen, bloeckeAnkuendigen, weitereAnkuendigen, wachhundStellen, entfernen, sofort, aktionsUrl };

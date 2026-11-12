@@ -16,6 +16,7 @@ const G = hole('core/gedaechtnis');
 const SO = hole('core/sonder');
 const R = hole('core/tagesrhythmus');
 const L = hole('core/lernen');
+const AN = hole('core/ansicht');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
@@ -244,7 +245,7 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   // Tagesabschluss, Morgen-Überblick (heute und morgen), Hinweis am Blockende
   const kurzPlan = { bloecke: plan.bloecke, fahrten: plan.ablauf.fahrten, termine: plan.ablauf.termine, tagInfo: plan.tagInfo };
   const rhythmus = [
-    R.tagesabschluss(kurzPlan, jetzt, einst.abschluss, einst.aufstehen, await erledigtHeute(jetzt, aufgaben)),
+    R.tagesabschluss(kurzPlan, jetzt, einst.abschluss, einst.aufstehen, await erledigtHeute(jetzt, aufgaben), AN.geschafftAm(await DAT.lesen('gedaechtnis.json', null), D.ymd(jetzt))),
     R.morgenUeberblick(kurzPlan, D.ymd(jetzt), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
     R.morgenUeberblick(kurzPlan, D.ymd(D.plusTage(jetzt, 1)), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
   ].filter(Boolean).concat(R.blockEndeMitteilungen(plan.bloecke, jetzt, einst.blockEnde));
@@ -267,9 +268,9 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   const warnText = plan.warnungen.map(w => `${w.name} (fällig ${D.deutschDatum(w.faellig)})`).join(', ');
   const terminText = terminWarn.map(w => w.text).join('; ');
   if (warnText && warnText !== vorherPlan.warnText) {
-    await MIT.sofort('Planer: passt nicht', `Kein Platz in den nächsten ${einst.regeln.tage} Tagen für: ${warnText}`);
+    await MIT.sofort('Planer: Noch ohne Platz', `Für ${warnText} habe ich in den nächsten ${einst.regeln.tage} Tagen keine Lücke gefunden. Ich versuche es beim nächsten Planen wieder.`);
   }
-  if (terminText && terminText !== vorherPlan.terminText) await MIT.sofort('Planer: Termine prüfen', terminText);
+  if (terminText && terminText !== vorherPlan.terminText) await MIT.sofort('Planer: Bitte kurz ansehen', terminText);
   if (warnText) await log(`WARNUNG kein Platz: ${warnText}`);
   if (terminText) await log(`WARNUNG Termine: ${terminText}`);
   for (const b of plan.bloecke) await log(`Block ${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}-${D.hm(new Date(b.end))} ${b.name}${b.fest ? ' (fest)' : ''}`);
@@ -411,6 +412,22 @@ async function aktion(q, opt) {
     await MIT.entfernen([`planer-folge-${q.id}`]);
     await gedaechtnis({ typ: 'folge', id: q.id }, jetzt);
     await log(`Folgeaufgabe erledigt: ${q.id}`);
+    const { aufgaben } = await laden();
+    const a = aufgaben.find(x => x.id === q.id);
+    await erfolgMelden(a && a.folge ? a.folge.name || 'Folgeaufgabe' : 'Folgeaufgabe', jetzt);
+    return;
+  }
+
+  // "Nur 5 Minuten anfangen": nichts umplanen, in 5 Minuten nachfragen
+  if (q.aktion === 'fuenf') {
+    const plan = await DAT.lesen('plan.json', {});
+    const b = G.passenderBlock(plan.bloecke, q.id, jetzt);
+    const { aufgaben } = await laden();
+    const a = aufgaben.find(x => x.id === q.id);
+    const name = b ? b.name : a ? a.name : q.id;
+    await MIT.fuenfMinuten(q.id, name, q.ende || (b ? new Date(b.end).toISOString() : jetzt.toISOString()), jetzt);
+    await gedaechtnis({ typ: 'angefangen', id: q.id }, jetzt);
+    await log(`5 Minuten angefangen: ${name}`);
     return;
   }
 
@@ -425,6 +442,7 @@ async function aktion(q, opt) {
     }
     await aufgabenSpeichern(neu);
     await log(`Tagesabschluss: ${ids.length} als erledigt markiert.`);
+    await erfolgMelden(`${ids.length} Aufgabe${ids.length === 1 ? '' : 'n'}`, jetzt);
     await neuPlanen();
     return;
   }
@@ -452,7 +470,22 @@ async function aktion(q, opt) {
     geplantStart: block ? new Date(block.start).toISOString() : null,
     geplantEnde: block ? new Date(block.end).toISOString() : null,
   }, jetzt);
+  if (q.aktion === 'erledigt') {
+    const { aufgaben } = await laden();
+    const a = aufgaben.find(x => x.id === q.id);
+    await erfolgMelden(block ? block.name : a ? a.name : 'Aufgabe', jetzt);
+  }
   if (!opt.ohneNeuplanen) await neuPlanen();
+}
+
+// Kleine Bestätigung mit Ton: "Geschafft: Bad putzen – heute schon 3 erledigt."
+async function erfolgMelden(name, jetzt) {
+  try {
+    const { einst } = await laden();
+    if (!einst.anzeige || !einst.anzeige.erfolg) return;
+    const n = AN.geschafftAm(await DAT.lesen('gedaechtnis.json', null), D.ymd(jetzt));
+    await MIT.erfolg(`Geschafft: ${name}`, n > 1 ? `Heute schon ${n} erledigt.` : 'Das erste für heute.');
+  } catch (e) { await log(`Hinweis: Erfolgs-Mitteilung nicht möglich: ${e}`); }
 }
 
 // Nach "Apotheke erledigt": Vorrat um eine Packung erhöhen (wenn Packungsgröße bekannt)

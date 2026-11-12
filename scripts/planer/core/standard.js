@@ -35,6 +35,8 @@ function standardEinstellungen() {
     blockEnde: { an: false },
     // Lernen aus deinem Verhalten (erst ab 3 Beobachtungen), Wochenrückblick sonntags
     lernen: { an: true, rueckblick: '18:00' },
+    // Kurze Mitteilung mit Ton, wenn etwas erledigt ist ("Geschafft: … – heute schon 3")
+    anzeige: { erfolg: true },
     // Einkaufsliste = Erinnerungen-Liste "Einkauf": Einkaufen wird als Besorgung geplant,
     // sobald 5 Sachen draufstehen, etwas 3 Tage wartet oder ein Eintrag mit "!" beginnt.
     einkauf: { an: true, liste: 'Einkauf', abAnzahl: 5, abTagen: 3, dauer: 30 },

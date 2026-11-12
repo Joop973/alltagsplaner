@@ -16,6 +16,10 @@ const SON = hole('adapter/sonder');
 const SO = hole('core/sonder');
 const AL = hole('core/alltag');
 const ERI = hole('adapter/erinnerungen');
+const AN = hole('core/ansicht');
+const ZE = hole('adapter/zeichnen');
+const FA = AN.FARBEN;
+const hex = h => new Color(h);
 
 // ---------- kleine Dialog-Helfer ----------
 
@@ -178,16 +182,23 @@ async function ersteinrichtung() {
 
 // ---------- Heute und Woche ----------
 
-const ZEIGEN = { erledigt: 'Erledigt', heutenicht: 'Heute nicht (ab morgen neu einplanen)', spaeter: 'Später (nächste Lücke)', nichtnoetig: 'Nicht nötig (noch sauber – Abstand neu ab heute)' };
+const ZEIGEN = { erledigt: 'Erledigt', fuenf: 'Nur 5 Minuten anfangen', heutenicht: 'Heute nicht (ab morgen neu einplanen)', spaeter: 'Später (nächste Lücke)', nichtnoetig: 'Nicht nötig (noch sauber – Abstand neu ab heute)' };
 
+// Zeile im dunklen, ruhigen Stil. opt: {marke: Farbe (#hex) für den Streifen links, farbe: Textfarbe (#hex),
+// fett, klein, hoehe, waehlen}
 function zeile(t, text, untertitel, opt) {
+  const o = opt || {};
   const r = new UITableRow();
+  r.backgroundColor = hex(FA.hintergrund);
+  if (o.marke) r.addImage(ZE.marke(o.marke)).widthWeight = 5;
   const c = r.addText(text, untertitel || null);
-  c.titleFont = opt && opt.fett ? Font.boldSystemFont(16) : Font.systemFont(15);
-  if (opt && opt.farbe) c.titleColor = opt.farbe;
-  if (opt && opt.klein) c.subtitleFont = Font.systemFont(12);
-  if (opt && opt.hoehe) r.height = opt.hoehe;
-  if (opt && opt.waehlen) { r.onSelect = opt.waehlen; r.dismissOnSelect = true; }
+  if (o.marke) c.widthWeight = 95;
+  c.titleFont = o.fett ? Font.boldSystemFont(17) : Font.systemFont(16);
+  c.titleColor = hex(o.farbe || FA.text);
+  c.subtitleColor = hex(FA.leise);
+  c.subtitleFont = Font.systemFont(o.klein ? 13 : 14);
+  if (o.hoehe) r.height = o.hoehe;
+  if (o.waehlen) { r.onSelect = o.waehlen; r.dismissOnSelect = true; }
   t.addRow(r);
   return r;
 }
@@ -195,34 +206,50 @@ function zeile(t, text, untertitel, opt) {
 function kopf(t, text, untertitel) {
   const r = new UITableRow();
   r.isHeader = true;
-  r.backgroundColor = new Color('#e8e8e8');
-  r.addText(text, untertitel || null);
+  r.backgroundColor = hex(FA.karte);
+  const c = r.addText(text, untertitel || null);
+  c.titleColor = hex(FA.text);
+  c.subtitleColor = hex(FA.leise);
   t.addRow(r);
+}
+
+function bildZeile(t, bild, hoehe) {
+  const r = new UITableRow();
+  r.backgroundColor = hex(FA.hintergrund);
+  r.height = hoehe;
+  r.addImage(bild);
+  t.addRow(r);
+}
+
+function zeitleisteZeile(t, plan, datum, jetzt) {
+  const segs = AN.segmente(plan, datum, plan.anzeige);
+  const f = AN.tagesFenster(segs, datum);
+  bildZeile(t, ZE.zeitleiste(segs, { ...f, breite: 340, hoehe: 16, jetzt, stunden: true }), 46);
 }
 
 function eintraegeFuer(plan, datum) {
   const liste = [];
   for (const tm of plan.termine || []) {
     if (D.ymd(new Date(tm.start)) !== datum) continue;
-    liste.push({ zeit: new Date(tm.start), text: `${D.hm(new Date(tm.start))}–${D.hm(new Date(tm.end))}  ${tm.titel}`, art: 'termin' });
+    liste.push({ zeit: new Date(tm.start), text: `${D.hm(new Date(tm.start))}–${D.hm(new Date(tm.end))}  ${tm.titel}`, art: tm.art === 'arbeit' ? 'arbeit' : 'termin' });
   }
   for (const f of plan.fahrten || []) {
-    if (D.ymd(new Date(f.abfahrt)) !== datum) continue;
+    if (D.ymd(new Date(f.abfahrt)) !== datum || !(f.minuten > 0)) continue;
     const ziel = f.nachArt === 'zuhause' ? 'nach Hause' : `zu ${f.zielName}`;
-    liste.push({ zeit: new Date(f.abfahrt), text: `${D.hm(new Date(f.abfahrt))}  Fahrt ${ziel} (${f.modus}, ${f.minuten} min${f.geschaetzt ? ', geschätzt' : ''})`, art: 'fahrt' });
+    liste.push({ zeit: new Date(f.abfahrt), text: `${D.hm(new Date(f.abfahrt))}  ${f.modus === 'Fahrrad' ? 'Rad' : 'Auto'} ${ziel}`, unter: `${f.minuten} min${f.geschaetzt ? ', geschätzt' : ''}`, art: 'fahrt' });
   }
   for (const b of plan.bloecke || []) {
     if (D.ymd(new Date(b.start)) !== datum) continue;
     const extra = [b.unterwegs ? 'unterwegs' : '', b.fest ? 'fest' : ''].filter(Boolean).join(', ');
-    liste.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}${extra ? ` (${extra})` : ''}`, art: 'block', block: b });
+    liste.push({ zeit: new Date(b.start), text: `${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}  ${b.name}`, unter: extra || null, art: 'aufgabe', block: b });
   }
   return liste.sort((x, y) => x.zeit - y.zeit);
 }
 
 async function blockAktion(b) {
-  const optionen = ['erledigt', 'heutenicht', 'spaeter'].concat(b.einmalig ? [] : ['nichtnoetig']);
+  const optionen = ['erledigt', 'fuenf', 'spaeter', 'heutenicht'].concat(b.einmalig ? [] : ['nichtnoetig']);
   const schritte = b.schritte && b.schritte.length ? `\n${b.schritte.map(x => '- ' + x).join('\n')}` : '';
-  const i = await auswahl(b.name, `${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}${schritte}\nDanach wird neu geplant.`, optionen.map(o => ZEIGEN[o]));
+  const i = await auswahl(b.name, `${D.kurz(new Date(b.start))} ${D.hm(new Date(b.start))}–${D.hm(new Date(b.end))}${schritte}`, optionen.map(o => ZEIGEN[o]));
   if (i === -1) return;
   await PLAN.aktion({ aktion: optionen[i], id: b.aufgabeId, ende: b.end });
 }
@@ -244,37 +271,44 @@ async function heute() {
     const plan = await DAT.lesen('plan.json', null);
     if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
     const z = await PLAN.zustandLaden();
-    const { aufgaben, einst } = await PLAN.laden();
+    const { aufgaben } = await PLAN.laden();
+    const ged = await DAT.lesen('gedaechtnis.json', null);
     const jetzt = new Date();
     const hT = D.ymd(jetzt), mT = D.ymd(D.plusTage(jetzt, 1));
     const ueberfaellig = aufgaben.filter(a => a.aktiv !== false && PL.dringlichkeit(PL.faelligAm(a, hT), hT) > 3);
     let wahl = null;
     const t = new UITable();
-    t.showSeparators = true;
-    const k = new UITableRow();
-    k.isHeader = true;
-    k.addText(`Heute · ${D.kurz(jetzt)}`, `geplant ${D.kurz(new Date(plan.erstellt))} ${D.hm(new Date(plan.erstellt))} · Aufgabe antippen`);
-    t.addRow(k);
+    t.showSeparators = false;
+    kopf(t, `Heute · ${D.kurz(jetzt)}`, 'Aufgabe antippen: erledigt, 5 Minuten, später …');
+    zeitleisteZeile(t, plan, hT, jetzt);
+
+    // Jetzt / Als Nächstes mit Restzeit als Balken
+    const j = AN.jetztUndDanach(plan, jetzt, plan.anzeige);
+    const e = j.aktuell || j.naechstes;
+    if (e) {
+      const blk = e.art === 'aufgabe' ? (plan.bloecke || []).find(x => x.aufgabeId === e.aufgabeId && new Date(x.start).getTime() === e.start.getTime()) : null;
+      zeile(t, j.aktuell ? `Jetzt: ${e.titel}` : `Als Nächstes: ${e.titel}`, `${j.text} · ${j.aktuell ? `bis ${D.hm(e.end)}` : `um ${D.hm(e.start)}`}`, {
+        marke: AN.farbeFuer(e.art), fett: true, hoehe: 58, waehlen: blk ? () => { wahl = { art: 'block', block: blk }; } : null,
+      });
+      bildZeile(t, ZE.balken(j.anteil, { breite: 340, hoehe: 8, farbe: AN.farbeFuer(e.art) }), 18);
+    }
+    const geschafft = AN.geschafftAm(ged, hT);
+    if (geschafft) zeile(t, `Heute geschafft: ${geschafft}`, null, { farbe: FA.erfolg });
+
     const hInfo = (plan.tagesInfo || {})[hT];
-    if (hInfo && hInfo.grund) zeile(t, hInfo.krank ? 'Krank – heute keine Aufgaben' : hInfo.weg ? 'Abwesend – keine Aufgaben' : hInfo.keineAufgaben ? 'Heute keine Aufgaben' : `Frei: ${hInfo.grund}`, null, { farbe: Color.blue() });
-    if (plan.warnText) zeile(t, 'Passt nicht:', plan.warnText, { farbe: Color.red(), hoehe: 70, klein: true });
-    if (plan.terminText) zeile(t, 'Termine prüfen:', plan.terminText, { farbe: Color.red(), hoehe: 70, klein: true });
-    const wecker = (plan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
-    if (wecker.length) zeile(t, `Wecker: ${wecker.map(w => w.zeit).join(', ')}`);
-    zeile(t, 'Eintippen …', 'z. B. "Termin Arzt Dienstag 10 Uhr" oder "Milch auf die Einkaufsliste"', { waehlen: () => { wahl = { art: 'tippen' }; } });
-    zeile(t, 'Ich habe jetzt Zeit …', 'passende Aufgabe vorschlagen', { waehlen: () => { wahl = { art: 'zeit' }; } });
-    const keine = z.keineAufgaben === hT;
-    zeile(t, keine ? 'Heute wieder Aufgaben' : 'Heute keine Aufgaben', keine ? null : 'z. B. Besuch, kaputt, krank', { waehlen: () => { wahl = { art: 'keine' }; } });
-    if (ueberfaellig.length >= 3) zeile(t, `Rückstand auflösen (${ueberfaellig.length} lange überfällig)`, 'alles gilt als erledigt, Abstände neu ab heute', { waehlen: () => { wahl = { art: 'rueckstand' }; } });
-    zeile(t, 'Neu planen', 'mit gespeicherten Fahrzeiten, Wecker bleiben', { waehlen: () => { wahl = { art: 'neu' }; } });
+    if (hInfo && hInfo.grund) zeile(t, hInfo.krank ? 'Krank – heute keine Aufgaben' : hInfo.weg ? 'Abwesend – keine Aufgaben' : hInfo.keineAufgaben ? 'Heute keine Aufgaben' : `Frei: ${hInfo.grund}`, null, { farbe: FA.termin });
+    if (plan.warnText) zeile(t, 'Noch ohne Platz', `${plan.warnText} – ich versuche es beim nächsten Planen wieder`, { farbe: FA.hinweis, hoehe: 64, klein: true });
+    if (plan.terminText) zeile(t, 'Bitte kurz ansehen', plan.terminText, { farbe: FA.hinweis, hoehe: 64, klein: true });
+
     for (const [datum, titel] of [[hT, 'Heute'], [mT, 'Morgen']]) {
       kopf(t, `${titel} · ${D.kurz(D.ausYmd(datum))}`);
-      const liste = eintraegeFuer(plan, datum).filter(e => datum !== hT || e.art === 'block' || new Date(e.zeit) >= D.plusMin(jetzt, -60));
-      if (!liste.length) zeile(t, 'Nichts geplant.');
-      for (const e of liste) {
-        zeile(t, e.text, null, {
-          fett: e.art === 'block', farbe: e.art === 'termin' ? Color.gray() : null,
-          waehlen: e.block ? () => { wahl = { art: 'block', block: e.block }; } : null,
+      if (datum === mT) zeitleisteZeile(t, plan, datum, null);
+      const liste = eintraegeFuer(plan, datum).filter(x => datum !== hT || x.art === 'aufgabe' || new Date(x.zeit) >= D.plusMin(jetzt, -60));
+      if (!liste.length) zeile(t, 'Nichts geplant.', null, { farbe: FA.leise });
+      for (const x of liste) {
+        zeile(t, x.text, x.unter, {
+          marke: AN.farbeFuer(x.art), fett: x.art === 'aufgabe', farbe: x.art === 'aufgabe' ? FA.text : FA.leise, klein: true,
+          waehlen: x.block ? () => { wahl = { art: 'block', block: x.block }; } : null,
         });
       }
     }
@@ -284,10 +318,20 @@ async function heute() {
       kopf(t, 'Fällig, aber nicht eingeplant');
       for (const a of offen) {
         zeile(t, a.name, PL.dringlichkeitText(PL.dringlichkeit(PL.faelligAm(a, hT), hT)), {
-          klein: true, waehlen: () => { wahl = { art: 'offen', aufgabe: a }; },
+          marke: FA.hinweis, klein: true, waehlen: () => { wahl = { art: 'offen', aufgabe: a }; },
         });
       }
     }
+
+    kopf(t, 'Mehr');
+    const wecker = (plan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
+    if (wecker.length) zeile(t, `Wecker: ${wecker.map(w => w.zeit).join(', ')}`, null, { farbe: FA.leise });
+    zeile(t, 'Ich habe jetzt Zeit …', 'passende Aufgabe vorschlagen', { waehlen: () => { wahl = { art: 'zeit' }; } });
+    zeile(t, 'Eintippen …', 'z. B. "Termin Arzt Dienstag 10 Uhr"', { waehlen: () => { wahl = { art: 'tippen' }; } });
+    const keine = z.keineAufgaben === hT;
+    zeile(t, keine ? 'Heute wieder Aufgaben' : 'Heute keine Aufgaben', keine ? null : 'z. B. Besuch, kaputt, krank', { waehlen: () => { wahl = { art: 'keine' }; } });
+    if (ueberfaellig.length >= 3) zeile(t, `Rückstand auflösen (${ueberfaellig.length} lange überfällig)`, 'Abstände laufen neu ab heute', { waehlen: () => { wahl = { art: 'rueckstand' }; } });
+    zeile(t, 'Neu planen', 'mit gespeicherten Fahrzeiten, Wecker bleiben', { waehlen: () => { wahl = { art: 'neu' }; } });
     await t.present();
     if (!wahl) return;
     if (wahl.art === 'block') await blockAktion(wahl.block);
@@ -300,7 +344,7 @@ async function heute() {
       await PLAN.neuPlanen();
     }
     if (wahl.art === 'offen') {
-      const i = await auswahl(wahl.aufgabe.name, 'Nicht eingeplant (kein Platz oder gesperrt).', ['Erledigt', 'Nicht nötig']);
+      const i = await auswahl(wahl.aufgabe.name, 'Noch nicht eingeplant (kein Platz oder gesperrt).', ['Erledigt', 'Nicht nötig']);
       if (i >= 0) await PLAN.aktion({ aktion: i === 0 ? 'erledigt' : 'nichtnoetig', id: wahl.aufgabe.id });
     }
     await DAT.logSchreiben();
@@ -311,24 +355,23 @@ async function woche() {
   const plan = await DAT.lesen('plan.json', null);
   if (!plan) { await info('Noch kein Plan', 'Bitte zuerst "Jetzt planen".'); return; }
   const t = new UITable();
-  t.showSeparators = true;
+  t.showSeparators = false;
+  const jetzt = new Date();
   const tage = plan.tagInfo || [];
-  const naechsterFrei = tage.find(x => !x.arbeit && D.ymd(new Date()) < x.datum);
-  const k = new UITableRow();
-  k.isHeader = true;
-  k.addText('Woche', naechsterFrei ? `Nächster freier Tag: ${D.kurz(D.ausYmd(naechsterFrei.datum))}` : '');
-  t.addRow(k);
+  const naechsterFrei = tage.find(x => !x.arbeit && D.ymd(jetzt) < x.datum);
+  kopf(t, 'Woche', naechsterFrei ? `Nächster freier Tag: ${D.kurz(D.ausYmd(naechsterFrei.datum))}` : '');
   for (const tag of tage) {
     const termine = (plan.termine || []).filter(x => D.ymd(new Date(x.start)) === tag.datum);
     const arbeit = termine.find(x => x.art === 'arbeit');
     const lueckeMin = ((plan.luecken || []).find(l => l.datum === tag.datum) || { luecken: [] }).luecken
-      .reduce((s, l) => s + Math.round((l.end - l.start) / 60000), 0);
+      .reduce((s2, l) => s2 + Math.round((l.end - l.start) / 60000), 0);
     const tInfo = (plan.tagesInfo || {})[tag.datum];
     const art = tInfo && tInfo.krank ? 'krank' : tInfo && tInfo.weg ? 'abwesend' : arbeit ? `Arbeit ${D.hm(new Date(arbeit.start))}–${D.hm(new Date(arbeit.end))}` : 'frei';
     kopf(t, `${D.kurz(D.ausYmd(tag.datum))} · ${art}`, `${lueckeMin} min frei für Aufgaben`);
-    for (const x of termine.filter(x => x.art !== 'arbeit')) zeile(t, `${D.hm(new Date(x.start))}  ${x.titel}`, null, { farbe: Color.gray() });
+    zeitleisteZeile(t, plan, tag.datum, D.ymd(jetzt) === tag.datum ? jetzt : null);
+    for (const x of termine.filter(x => x.art !== 'arbeit')) zeile(t, `${D.hm(new Date(x.start))}  ${x.titel}`, null, { marke: FA.termin, farbe: FA.leise });
     for (const b of (plan.bloecke || []).filter(b => D.ymd(new Date(b.start)) === tag.datum)) {
-      zeile(t, `${D.hm(new Date(b.start))}  ${b.name}`, null, { fett: true });
+      zeile(t, `${D.hm(new Date(b.start))}  ${b.name}`, null, { marke: FA.aufgabe, fett: true });
     }
   }
   await t.present();
@@ -718,6 +761,7 @@ async function einstellungenMenue() {
       [`Wachhund (Mitteilung, wenn der 06:00-Lauf fehlt): ${einst.wachhund.an ? 'an' : 'aus'}`, async () => { einst.wachhund.an = !einst.wachhund.an; await PLAN.einstellungenSpeichern(einst); }],
       ['Wecker, Abend und Morgen (Aufstehen, Tagesabschluss, Regen)', () => tagesrhythmusMenue(einst)],
       [`Lernen und Wochenrückblick: ${einst.lernen.an ? 'an' : 'aus'}`, async () => { einst.lernen.an = !einst.lernen.an; await PLAN.einstellungenSpeichern(einst); }],
+      [`Erfolgs-Mitteilung mit Ton beim Erledigen: ${einst.anzeige.erfolg ? 'an' : 'aus'}`, async () => { einst.anzeige.erfolg = !einst.anzeige.erfolg; await PLAN.einstellungenSpeichern(einst); }],
       ['Daten sichern / einspielen', sicherungMenue],
       ['Ersteinrichtung', ersteinrichtung],
       ['Test: planen ohne Kurzbefehl (ohne Wecker)', async () => {

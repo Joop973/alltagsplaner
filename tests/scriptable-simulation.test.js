@@ -278,7 +278,7 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   // Erinnerungen zum Abhaken (heute + morgen)
   assert.deepStrictEqual(u.erinnerungen.map(r => r.title), ['Bad putzen · 18:15', 'Staubsaugen · 18:45']);
   assert.ok(u.erinnerungen.every(r => r.dueDate && r.dueDateIncludesTime === false), 'Erinnerungen mit Datum (Heute-Liste)');
-  assert.strictEqual(u.mitteilungen[0].actions.map(a => a.titel).join(','), 'Erledigt,Später,Heute nicht,Nicht nötig');
+  assert.strictEqual(u.mitteilungen[0].actions.map(a => a.titel).join(','), 'Erledigt,5 Minuten anfangen,Später,Heute nicht,Nicht nötig');
 
   // Nochmal planen: keine doppelten Einträge
   await u.script('Planer Planen.js', { shortcutParameter: text });
@@ -292,6 +292,9 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   await u.script('Planer Aktion.js', { queryParameters: Object.fromEntries(url.searchParams) });
   const aufgaben = JSON.parse(fs.readFileSync(u.daten('aufgaben.json'), 'utf8'));
   assert.strictEqual(aufgaben.find(x => x.id === 'bad').letzte, '2026-11-12');
+  // kleine Bestätigung mit Erfolgston
+  const erfolg = u.mitteilungen.find(m => m.title === 'Geschafft: Bad putzen');
+  assert.ok(erfolg && erfolg.sound === 'piano_success' && erfolg.body === 'Das erste für heute.', u.mitteilungen.map(m => m.title).join(' | '));
   // plant direkt in Scriptable neu, ohne in die Kurzbefehle-App zu springen
   assert.deepStrictEqual(u.geoeffnet, []);
   const nachErledigt = u.termine.filter(t => t.calendar.title === 'Planer' && t.notes.startsWith('planer-aufgabe'));
@@ -301,6 +304,18 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   assert.deepStrictEqual(planNach.wecker.map(w => w.zeit), ['19:40', '05:45', '06:40'], 'Wecker aus dem letzten Kurzbefehl-Lauf bleiben');
   const ged = JSON.parse(fs.readFileSync(u.daten('gedaechtnis.json'), 'utf8'));
   assert.deepStrictEqual(ged.ereignisse.map(e => [e.typ, e.id, e.geplantStart && new Date(e.geplantStart).getHours()]), [['erledigt', 'bad', 18]]);
+
+  // "5 Minuten anfangen" bei Staubsaugen: nichts umplanen, in 5 Minuten nachfragen; Neuplanen löscht das nicht
+  const saugMit = u.mitteilungen.find(m => m.title === 'Jetzt: Staubsaugen');
+  const fuenfUrl = new URL(saugMit.actions.find(a => a.titel === '5 Minuten anfangen').url.replace('scriptable:///', 'http://x/'));
+  u.setJetzt(um(18, 45));
+  await u.script('Planer Aktion.js', { queryParameters: Object.fromEntries(fuenfUrl.searchParams) });
+  let fuenf = u.mitteilungen.find(m => m.title === '5 Minuten um: Staubsaugen');
+  assert.ok(fuenf && fuenf.trigger.getTime() === um(18, 50).getTime());
+  assert.deepStrictEqual(fuenf.actions.map(a => a.titel), ['Erledigt', 'Später']);
+  await u.script('Planer Planen.js', { shortcutParameter: text });
+  assert.ok(u.mitteilungen.some(m => m.title === '5 Minuten um: Staubsaugen'), 'bleibt nach dem Neuplanen');
+  u.setJetzt(um(18, 20));
 
   // In der Erinnerungen-App "Staubsaugen" abhaken, dann neu planen
   const saugen = u.erinnerungen.find(r => r.title.startsWith('Staubsaugen'));

@@ -101,7 +101,7 @@ function morgenUeberblick(plan, datum, jetzt, cfg, aufstehen, regeln) {
 
 // Tagesabschluss am Abend: offene Aufgaben von heute + Aufstehen/Bettzeit für morgen.
 // erledigtHeute: Set von Aufgaben-IDs, die heute schon erledigt/abgehakt wurden
-function tagesabschluss(plan, jetzt, cfg, aufstehen, erledigtHeute) {
+function tagesabschluss(plan, jetzt, cfg, aufstehen, erledigtHeute, geschafft) {
   if (!cfg || !cfg.an) return null;
   const heute = D.ymd(jetzt);
   const morgen = D.ymd(D.plusTage(jetzt, 1));
@@ -110,6 +110,7 @@ function tagesabschluss(plan, jetzt, cfg, aufstehen, erledigtHeute) {
   const offen = (plan.bloecke || []).filter(b => D.ymd(new Date(b.start)) === heute && new Date(b.start) < zeit && !(erledigtHeute && erledigtHeute.has(b.aufgabeId)));
   const a = aufstehZeit(plan.fahrten, morgen, aufstehen);
   const zeilen = [];
+  if (geschafft) zeilen.push(`Heute geschafft: ${geschafft}.`);
   if (offen.length) zeilen.push(`Offen von heute: ${offen.map(b => b.name).join(', ')}`);
   if (a) {
     const bett = D.plusMin(a.zeitpunkt, -(aufstehen.schlafStunden || 8) * 60);

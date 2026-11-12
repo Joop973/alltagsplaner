@@ -88,3 +88,10 @@ test('Hinweis am Blockende (Option)', () => {
   const m = R.blockEndeMitteilungen(b, um(12, 9), { an: true });
   assert.deepStrictEqual(m.map(x => `${D.hm(x.zeit)} ${x.titel}`), ['18:30 Zeit um: Bad putzen']);
 });
+
+test('Tagesabschluss nennt, was heute geschafft wurde', () => {
+  const R2 = require('../scripts/planer/core/tagesrhythmus');
+  const m = R2.tagesabschluss({ bloecke: [], fahrten: [] }, new Date(2026, 10, 12, 9), { an: true, zeit: '20:30' }, { an: false }, new Set(), 3);
+  assert.strictEqual(m.text, 'Heute geschafft: 3.');
+  assert.strictEqual(R2.tagesabschluss({ bloecke: [], fahrten: [] }, new Date(2026, 10, 12, 9), { an: true, zeit: '20:30' }, { an: false }, new Set(), 0), null);
+});

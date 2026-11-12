@@ -183,14 +183,22 @@ Genauso, Uhrzeit 20:00.
 
 ## 4. Widget
 
-**Home-Bildschirm**
+Das Widget ist dunkel und ruhig. Es zeigt oben, was **jetzt** dran ist (oder **als Nächstes** kommt), mit Symbol, einer Restzeit, die von selbst mitläuft, und einem Balken, der schrumpft. Darunter: der Tag als farbige Zeitleiste (ein weißer Strich = jetzt) und die nächsten Punkte.
+
+Farben: Grün = Aufgabe, Hellblau = Termin, Blau = Arbeit, Orange = Fahrt, Lila = Ruhe vor der Abfahrt, Grau = Pause.
+
+**Home-Bildschirm** (mittel empfohlen; groß zeigt mehr, klein nur das Nächste)
 1. Auf eine leere Stelle des Home-Bildschirms lange drücken → oben links **Bearbeiten** → **Widget hinzufügen**.
-2. **Scriptable** suchen → mittlere Größe wählen → **Widget hinzufügen**.
+2. **Scriptable** suchen → Größe wählen → **Widget hinzufügen**.
 3. Das neue Widget antippen (noch im Bearbeiten-Modus) → **Script**: **Planer Widget** → **When Interacting**: **Run Script**.
 
-**Sperrbildschirm** (nächste Abfahrt bzw. Aufgabe)
+**Sperrbildschirm**
 1. Sperrbildschirm lange drücken → **Anpassen** → **Sperrbildschirm** → in das Feld unter der Uhr tippen.
-2. **Scriptable** → rechteckiges Widget wählen → antippen → Script **Planer Widget**.
+2. **Scriptable** → **rechteckig** (Titel, Restzeit, Balken) und/oder **rund** (Ring, der mit der Restzeit kleiner wird) wählen.
+3. Jedes Widget antippen → Script **Planer Widget**.
+4. Optional über der Uhr (eine Zeile): dort Scriptable wählen → Script **Planer Widget**.
+
+Hinweis: iOS zeichnet Widgets nur alle paar Minuten neu. Die Restzeit-Zahl läuft trotzdem sekundengenau mit, der Balken springt in Schritten.
 
 ---
 
