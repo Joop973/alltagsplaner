@@ -1,5 +1,5 @@
 {
-  "version": "3.5.0",
+  "version": "3.5.1",
   "dateien": [
     "planer/adapter/dateien.js",
     "planer/adapter/dienstplan.js",

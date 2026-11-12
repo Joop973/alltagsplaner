@@ -54,12 +54,14 @@ function kopf(w, j, jetzt, opt) {
   z.centerAlignContent();
   symbol(z, AN.symbolFuer(e), opt.gross ? 20 : 16, opt.mono ? null : AN.farbeFuer(e.art));
   z.addSpacer(8);
-  const titel = j.aktuell ? e.titel : `Als Nächstes: ${e.titel}`;
-  text(z, titel, opt.gross ? 17 : 14, opt.mono ? null : F.text, true);
-  w.addSpacer(3);
+  // Sperrbildschirm ist schmal: Uhrzeit in den Titel, darunter nur "noch …" (sonst wird gekürzt)
+  const titel = opt.mono ? (j.aktuell ? e.titel : `${D.hm(e.start)} ${e.titel}`) : j.aktuell ? e.titel : `Als Nächstes: ${e.titel}`;
+  text(z, titel, opt.gross ? 17 : opt.mono ? 13 : 14, opt.mono ? null : F.text, true);
+  w.addSpacer(opt.mono ? 1 : 3);
   const u = w.addStack();
   u.centerAlignContent();
-  const wann = j.aktuell ? `bis ${D.hm(e.end)} · noch ` : `${D.ymd(e.start) === D.ymd(jetzt) ? 'um' : D.kurz(e.start).slice(0, 2)} ${D.hm(e.start)} · in `;
+  const wann = opt.mono ? (j.aktuell ? 'noch ' : 'in ')
+    : j.aktuell ? `bis ${D.hm(e.end)} · noch ` : `${D.ymd(e.start) === D.ymd(jetzt) ? 'um' : D.kurz(e.start).slice(0, 2)} ${D.hm(e.start)} · in `;
   text(u, wann, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
   restzeit(u, j.bis, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
   w.addSpacer(5);
@@ -92,19 +94,24 @@ async function erstellen(familie) {
   if (familie === 'accessoryInline') {
     w.addText(e ? `${e.titel} · ${j.aktuell ? `bis ${D.hm(e.end)}` : D.hm(e.start)}` : 'Planer: frei');
   } else if (familie === 'accessoryCircular') {
-    w.backgroundImage = ZE.ring(e ? j.anteil : 0, { groesse: 76, dicke: 6, mono: true });
-    w.addSpacer();
-    const z = w.addStack();
+    // iOS entfernt auf dem Sperrbildschirm den Widget-Hintergrund: Ring darum als Hintergrund eines Stapels
+    w.setPadding(0, 0, 0, 0);
+    const k = w.addStack();
+    k.size = new Size(66, 66);
+    k.backgroundImage = ZE.ring(e ? j.anteil : 0, { groesse: 66, dicke: 5, mono: true });
+    k.layoutVertically();
+    k.addSpacer();
+    const z = k.addStack();
     z.addSpacer();
-    symbol(z, e ? AN.symbolFuer(e) : 'checkmark', 16, null);
+    symbol(z, e ? AN.symbolFuer(e) : 'checkmark', 14, null);
     z.addSpacer();
     if (e) {
-      const t = w.addStack();
-      t.addSpacer();
+      const t = k.addStack();
+      t.addSpacer(8);
       restzeit(t, j.bis, 10, null).centerAlignText();
-      t.addSpacer();
+      t.addSpacer(8);
     }
-    w.addSpacer();
+    k.addSpacer();
   } else if (familie === 'accessoryRectangular') {
     if (e) kopf(w, j, jetzt, { mono: true, breite: 150 });
     else text(w, plan ? 'Nichts mehr geplant' : 'Noch kein Plan', 13, null, true);
