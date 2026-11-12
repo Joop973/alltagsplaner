@@ -104,3 +104,7 @@ test('Anleitung enthält genau die aktuelle Claude-Anweisung', () => {
   const doku = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'docs', 'kurzbefehle.md'), 'utf8');
   assert.ok(doku.includes(SP.CLAUDE_ANWEISUNG), 'docs/kurzbefehle.md Abschnitt 5 anpassen');
 });
+
+test('Treffen mit Datum ohne Uhrzeit = ganztägiger Termin', () => {
+  assert.strictEqual(eins('Morgen Treffen mit Max und Moritz'), 'Termin "Treffen mit Max und Moritz" am Fr 13.11. (ganztägig)');
+});

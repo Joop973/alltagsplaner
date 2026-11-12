@@ -16,11 +16,16 @@ const MIT = hole('adapter/mitteilungen');
 const log = t => DAT.log(t);
 const BEISPIELE = 'Beispiele:\n- Bad putzen erledigt\n- Staubsaugen nicht nötig\n- Milch und Brot auf die Einkaufsliste\n- Termin Arzt Dienstag 10 Uhr in Musterstadt\n- Training morgen erst um 20 Uhr\n- Arzt von Dienstag auf Donnerstag 11 Uhr verschieben\n- Ich bin krank\n- Urlaub vom 1.12. bis 5.12.\n- Neue Aufgabe Pflanzen gießen alle 3 Tage\n- Frist TÜV am 20.12.';
 
-// Über Siri/Kurzbefehl kann Scriptable oft kein Fenster zeigen (Fehler "AlertBridge").
-// Dann null zurückgeben; der Aufrufer macht ohne Rückfrage weiter und meldet per Mitteilung.
-async function zeigen(alert, alsListe) {
+// Über Siri kann Scriptable kein Fenster zeigen ("Alerts are not supported in Siri"; schon
+// "new Alert()" wirft dort einen Fehler). Dann null zurückgeben; der Aufrufer macht ohne
+// Rückfrage weiter und meldet per Mitteilung.
+// bauen(a): füllt das Alert (Titel, Text, Knöpfe).
+async function zeigen(bauen, alsListe) {
+  if (typeof config !== 'undefined' && config.runsWithSiri) return null;
   try {
-    return alsListe ? await alert.presentSheet() : await alert.presentAlert();
+    const a = new Alert();
+    bauen(a);
+    return alsListe ? await a.presentSheet() : await a.presentAlert();
   } catch (e) {
     await log(`Hinweis: Fenster nicht anzeigbar (${e && e.message ? e.message : e}) – weiter ohne Rückfrage.`);
     return null;
@@ -28,11 +33,8 @@ async function zeigen(alert, alsListe) {
 }
 
 async function info(titel, text) {
-  const a = new Alert();
-  a.title = titel;
-  a.message = text;
-  a.addAction('OK');
-  if ((await zeigen(a)) === null) await MIT.sofort(`Planer: ${titel}`, text);
+  const r = await zeigen(a => { a.title = titel; a.message = text; a.addAction('OK'); });
+  if (r === null) await MIT.sofort(`Planer: ${titel}`, text);
 }
 
 async function kalenderWaehlen(einst) {
@@ -40,12 +42,12 @@ async function kalenderWaehlen(einst) {
   const ohne = new Set([einst.kalender.planer, einst.kalender.arbeit, einst.geburtstage.kalender, einst.muell.kalender].filter(Boolean));
   const namen = (await KAL.alleNamen()).filter(n => !ohne.has(n));
   if (!namen.length) throw new Error('Kein Kalender für neue Termine gefunden.');
-  const a = new Alert();
-  a.title = 'In welchen Kalender?';
-  a.message = 'Neue Termine per Sprache landen künftig dort (änderbar in den Einstellungen).';
-  for (const n of namen) a.addAction(n);
-  a.addCancelAction('Abbrechen');
-  const i = await zeigen(a, true);
+  const i = await zeigen(a => {
+    a.title = 'In welchen Kalender?';
+    a.message = 'Neue Termine per Sprache landen künftig dort (änderbar in den Einstellungen).';
+    for (const n of namen) a.addAction(n);
+    a.addCancelAction('Abbrechen');
+  }, true);
   if (i === null) throw new Error('Kalender für neue Termine bitte einmal in der App wählen: Planer → Heute → Eintippen …');
   if (i === -1) return null;
   einst.sprache = { ...(einst.sprache || {}), kalender: namen[i] };
@@ -154,12 +156,12 @@ async function verarbeiten(eingang) {
     await info('Nicht verstanden', `${unklar.join('\n')}\n\n${BEISPIELE}`);
     return 'Nicht verstanden.';
   }
-  const a = new Alert();
-  a.title = 'Verstanden';
-  a.message = ok.map(x => `- ${x.beschreibung}`).join('\n') + (unklar.length ? `\n\nNicht verstanden:\n${unklar.join('\n')}` : '');
-  a.addAction('Ausführen');
-  a.addCancelAction('Abbrechen');
-  const antwort = await zeigen(a);
+  const antwort = await zeigen(a => {
+    a.title = 'Verstanden';
+    a.message = ok.map(x => `- ${x.beschreibung}`).join('\n') + (unklar.length ? `\n\nNicht verstanden:\n${unklar.join('\n')}` : '');
+    a.addAction('Ausführen');
+    a.addCancelAction('Abbrechen');
+  });
   if (antwort === -1) return 'Abgebrochen.';
   for (const x of ok) await ausfuehren(x);
   await log(`Sprache ausgeführt: ${ok.length} Aktion(en)${antwort === null ? ' (ohne Rückfrage)' : ''}.`);

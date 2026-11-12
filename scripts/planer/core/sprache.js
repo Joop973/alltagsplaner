@@ -240,9 +240,9 @@ function regeln(satz, k) {
   const aend = aenderungAus(s, k, gross);
   if (aend) return [aend];
   // Termin: "Termin Arzt Dienstag 10 Uhr in Musterstadt" oder alles mit Datum und Uhrzeit
-  const istTermin = /^(termin|treffen|verabredung)\b/.test(s);
   const z = zeitAus(s);
   const dt = datumAus(z.rest, k.heute);
+  const istTermin = /^(termin|treffen|verabredung)\b/.test(s) || (/(^|\s)(termin|treffen|verabredung)(\s|$)/.test(s) && dt.datum);
   if (istTermin || (z.zeit && dt.datum)) {
     const du = dauerAus(dt.rest);
     let rest = du.rest.replace(/^(termin|verabredung)\s/, '').replace(/^(beim|bei der|bei|mit|zum|zur)\s/, (x) => x);

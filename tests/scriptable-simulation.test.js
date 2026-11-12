@@ -752,7 +752,8 @@ test('Stufe 5: Planer sagen (Claude-Antwort und ohne Claude)', async () => {
   assert.strictEqual(tr[0].endDate.getHours() * 60 + tr[0].endDate.getMinutes(), 21 * 60 + 30);
   // Über Siri: Scriptable kann kein Fenster zeigen -> ohne Rückfrage ausführen, Mitteilung
   const AltAlert = u.ctx.Alert;
-  u.ctx.Alert = class extends AltAlert { async presentAlert() { throw new Error('ScriptableKit.AlertBridge'); } };
+  // wie am iPhone: schon "new Alert()" wirft über Siri
+  u.ctx.Alert = class { constructor() { throw new Error('Alerts are not supported in Siri.'); } };
   const aus3 = await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: Morgen ist mein Training erst um 18:00 Uhr\nCLAUDE:{"aktionen":[{"aktion":"termin","titel":"Training","datum":"morgen","uhrzeit":"18:00"}]}' });
   u.ctx.Alert = AltAlert;
   assert.match(aus3, /^Erledigt: "Training" \(Arbeit\): Fr 13\.11\. 20:00 -> Fr 13\.11\. 18:00/);
