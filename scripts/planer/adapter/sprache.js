@@ -42,6 +42,14 @@ async function kalenderWaehlen(einst) {
   const ohne = new Set([einst.kalender.planer, einst.kalender.arbeit, einst.geburtstage.kalender, einst.muell.kalender].filter(Boolean));
   const namen = (await KAL.alleNamen()).filter(n => !ohne.has(n));
   if (!namen.length) throw new Error('Kein Kalender für neue Termine gefunden.');
+  // Über Siri keine Auswahl möglich: Standard-Kalender des iPhones nehmen und merken
+  if (typeof config !== 'undefined' && config.runsWithSiri) {
+    const std = await Calendar.defaultForEvents();
+    einst.sprache = { ...(einst.sprache || {}), kalender: std.title };
+    await PLAN.einstellungenSpeichern(einst);
+    await log(`Sprache: neue Termine in den Standard-Kalender "${std.title}" (änderbar: in der App einmal Eintippen).`);
+    return std;
+  }
   const i = await zeigen(a => {
     a.title = 'In welchen Kalender?';
     a.message = 'Neue Termine per Sprache landen künftig dort (änderbar in den Einstellungen).';

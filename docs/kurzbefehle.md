@@ -200,27 +200,24 @@ Danach reicht: **"Hey Siri, Planer sagen"** – oder das Kurzbefehle-Widget anti
 
 **Wichtig bei Siri:** Erst nur **"Hey Siri, Planer sagen"** sagen und **warten**, bis das Diktieren startet. Erst dann den Satz sprechen. Siri gibt Text, der direkt hinter dem Namen steht ("Hey Siri, Planer sagen, dass …"), nicht an den Kurzbefehl weiter.
 
-Hast du den Kurzbefehl schon gebaut: den Text in Schritt 3 durch den neuen ersetzen (er kennt jetzt auch **Termine verschieben**).
+Der Kurzbefehl hat nur 3 Aktionen (ohne Claude, darum keine neuen Chats in der Claude-App):
 
 1. Neuer Kurzbefehl, Name exakt: **Planer sagen**.
 2. Aktion **Text diktieren** (auch "Diktieren"). Sprache: **Deutsch**. "Zuhören stoppen": **Nach Pause**.
-3. Aktion **Claude fragen** (App Claude). In das Textfeld diesen Text einfügen (kopieren aus dieser Anleitung), danach ein Leerzeichen und die Variable **Diktierter Text** (über der Tastatur):
+3. Aktion **Text**. Inhalt: `DIKTAT: ` und dahinter die Variable **Diktierter Text** (über der Tastatur "Variable auswählen" → Aktion "Text diktieren" antippen).
+4. Aktion **Script ausführen** (Scriptable). Script: **Planer Sprache**. Parameter: lange drücken → Variable auswählen → Aktion **Text** (Schritt 3).
+   **Show When Run: AN** (dann fragt der Planer vorher nach, wenn du den Kurzbefehl antippst).
 
-   ```
-   Wandle den folgenden gesprochenen Satz für meinen Alltagsplaner in JSON um. Antworte NUR mit JSON, ohne Erklärung, im Format {"aktionen":[{...}]}. Felder: aktion (erledigt, spaeter, heutenicht, nichtnoetig, einkauf, termin, aendern, aufgabe, abwesend, keineaufgaben, frist, geburtstag, genommen oder unklar), name (Aufgabe, Medikament, Person oder Frist), sachen (Liste, nur bei einkauf), titel, datum, uhrzeit (HH:MM), dauer (Minuten), ort (bei termin und aendern), neudatum (nur bei aendern), bis (letzter Tag bei abwesend), art (frei, krank oder weg bei abwesend), intervall (Tage bei aufgabe). termin = neuer Termin. aendern = einen bestehenden Termin verschieben oder ändern (z. B. "Training morgen erst um 20 Uhr", "Arzt von Dienstag auf Donnerstag verschieben"): titel = Name des Termins, datum = bisheriger Tag (nur wenn gesagt), neudatum = neuer Tag, uhrzeit = neue Uhrzeit. Datum genau so übernehmen, wie es gesagt wurde (z. B. "morgen", "Dienstag", "12.3."), nicht ausrechnen. Satz:
-   ```
-4. Aktion **Text**. Zwei Zeilen:
-   - Zeile 1: `DIKTAT: ` und dahinter die Variable **Diktierter Text**
-   - Zeile 2: `CLAUDE: ` und dahinter die Ausgabe von **Claude fragen** (Variable auswählen → die Aktion "Claude fragen" antippen)
-5. Aktion **Script ausführen** (Scriptable). Script: **Planer Sprache**. Parameter: lange drücken → Variable auswählen → Aktion **Text** (Schritt 4).
-   **Show When Run: AN** (wichtig – sonst kann der Planer nicht zurückfragen).
+**Du hast ihn schon mit Claude gebaut?** Dann nur:
+- Aktion **Claude fragen** löschen (nach links wischen oder das x).
+- In der Aktion **Text** die Zeile mit `CLAUDE:` löschen. Die Zeile `DIKTAT: …` bleibt.
 
-So funktioniert es: Du sprichst, Claude bringt den Satz in eine feste Form, der Planer zeigt "Verstanden: …" und führt nach **Ausführen** alles aus. Über Siri kann Scriptable oft kein Fenster zeigen: Dann führt der Planer es **ohne Rückfrage** aus und schickt eine Mitteilung "Planer: Erledigt" mit dem, was er geändert hat. Datum und Uhrzeit rechnet immer der Planer aus, nicht Claude.
+So funktioniert es: Du sprichst, der Planer zeigt "Verstanden: …" und führt nach **Ausführen** alles aus. Über Siri kann Scriptable kein Fenster zeigen: Dann führt der Planer es **ohne Rückfrage** aus und schickt eine Mitteilung "Planer: Erledigt" mit dem, was er geändert hat. Versteht er etwas nicht, kommt die Mitteilung "Planer: Nicht verstanden" mit Beispielen.
 
-**Ohne Claude** (oder wenn Schritt 3 klemmt): Schritt 3 und Zeile 2 von Schritt 4 weglassen. Dann versteht der Planer feste Sätze:
+Diese Sätze versteht der Planer (Reihenfolge der Wörter ist meist egal):
 - "Bad putzen erledigt", "Staubsaugen nicht nötig", "Fenster heute nicht", "Wäsche später"
 - "Milch und Brot auf die Einkaufsliste"
-- "Termin Arzt Dienstag 10 Uhr in Musterstadt", "Friseur am 3.12. um 15 Uhr"
+- "Termin Arzt Dienstag 10 Uhr in Musterstadt", "Friseur am 3.12. um 15 Uhr", "Morgen Treffen mit Max" (ohne Uhrzeit = ganztägig)
 - Termine verschieben (alle Kalender): "Training morgen erst um 20 Uhr", "Arzt von Dienstag auf Donnerstag 11 Uhr verschieben", "Friseur auf Freitag verschieben"
 - "Ich bin krank", "Urlaub vom 1.12. bis 5.12.", "Heute keine Aufgaben"
 - "Neue Aufgabe Pflanzen gießen alle 3 Tage 10 Minuten"
@@ -228,7 +225,14 @@ So funktioniert es: Du sprichst, Claude bringt den Satz in eine feste Form, der 
 
 Dasselbe geht in der App: **Planer → Heute → Eintippen …**
 
-Beim ersten Termin fragt der Planer, in welchen Kalender neue Termine sollen.
+Neue Termine landen in dem Kalender, den du beim ersten Mal in der App wählst. Kommt der erste Termin über Siri, nimmt der Planer deinen Standard-Kalender.
+
+**Optional, mit Claude** (versteht freiere Sätze, legt aber in der Claude-App jedes Mal einen neuen Chat an): zwischen Schritt 2 und 3 die Aktion **Claude fragen** einfügen, mit diesem Text, danach ein Leerzeichen und die Variable **Diktierter Text**:
+
+   ```
+   Wandle den folgenden gesprochenen Satz für meinen Alltagsplaner in JSON um. Antworte NUR mit JSON, ohne Erklärung, im Format {"aktionen":[{...}]}. Felder: aktion (erledigt, spaeter, heutenicht, nichtnoetig, einkauf, termin, aendern, aufgabe, abwesend, keineaufgaben, frist, geburtstag, genommen oder unklar), name (Aufgabe, Medikament, Person oder Frist), sachen (Liste, nur bei einkauf), titel, datum, uhrzeit (HH:MM), dauer (Minuten), ort (bei termin und aendern), neudatum (nur bei aendern), bis (letzter Tag bei abwesend), art (frei, krank oder weg bei abwesend), intervall (Tage bei aufgabe). termin = neuer Termin. aendern = einen bestehenden Termin verschieben oder ändern (z. B. "Training morgen erst um 20 Uhr", "Arzt von Dienstag auf Donnerstag verschieben"): titel = Name des Termins, datum = bisheriger Tag (nur wenn gesagt), neudatum = neuer Tag, uhrzeit = neue Uhrzeit. Datum genau so übernehmen, wie es gesagt wurde (z. B. "morgen", "Dienstag", "12.3."), nicht ausrechnen. Satz:
+   ```
+   In Schritt 3 eine zweite Zeile: `CLAUDE: ` und dahinter die Ausgabe von **Claude fragen**.
 
 ---
 

@@ -29,7 +29,7 @@ Abhaken, was schon erledigt ist. Ausführliche Kurzbefehl-Schritte: `docs/kurzbe
 ### 4. Automation "Verlassen" (3 min)
 Kurzbefehle → **Automation** → **+** → **Verlassen** → deine Adresse → **Sofort ausführen** → neuer leerer Kurzbefehl → **Script ausführen** → **Planer Abfahrt** → Show When Run **aus**.
 
-### 5. Kurzbefehl "Planer sagen" (15 min)
+### 5. Kurzbefehl "Planer sagen" (5 min)
 Siehe `docs/kurzbefehle.md` Abschnitt 5. Danach testen: "Hey Siri, Planer sagen" → "Milch auf die Einkaufsliste".
 
 ### 6. Dienstplan einlesen (5 min)

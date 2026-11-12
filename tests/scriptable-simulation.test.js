@@ -75,6 +75,7 @@ function umgebung({ jetzt, nurRelativ }) {
     Date: TestDate,
     Calendar: {
       forEvents: async () => kalender,
+      defaultForEvents: async () => kalender.find(k => k.title === 'Privat'),
       forReminders: async () => erinnerungsListen,
       createForReminders: async title => { const l = { title }; erinnerungsListen.push(l); return l; },
     },
@@ -765,6 +766,28 @@ test('Stufe 5: Planer sagen (Claude-Antwort und ohne Claude)', async () => {
   assert.match(log, /Sprache \(claude\)/);
   assert.match(log, /Termin geändert/);
   assert.match(log, /ohne Rückfrage/);
+});
+
+test('Planer sagen über Siri ohne Claude: Termin in den Standard-Kalender, Mitteilung statt Fenster', async () => {
+  const u = umgebung({ jetzt: new Date(2026, 10, 12, 7, 24) });
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), '[]');
+  u.ctx.config = { runsInApp: false, runsWithSiri: true };
+  u.ctx.Alert = class { constructor() { throw new Error('Alerts are not supported in Siri.'); } };
+  const aus = await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: Morgen Treffen mit Max und Moritz um 18 Uhr' });
+  assert.match(aus, /^Erledigt: Termin "Treffen mit Max und Moritz" am Fr 13\.11\. um 18:00/);
+  const t = u.termine.find(x => x.title === 'Treffen mit Max und Moritz');
+  assert.ok(t && t.calendar.title === 'Privat');
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('einstellungen.json'), 'utf8')).sprache.kalender, 'Privat');
+  assert.ok(u.mitteilungen.some(m => m.title === 'Planer: Erledigt'));
+  // nicht verstanden -> Mitteilung
+  await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: blabla' });
+  assert.ok(u.mitteilungen.some(m => m.title === 'Planer: Nicht verstanden'));
+  assert.ok(!fs.readFileSync(u.daten('log.txt'), 'utf8').includes('FEHLER'));
 });
 
 test('Manifest enthält alle Scripts', () => {
