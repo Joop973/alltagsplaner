@@ -120,7 +120,7 @@ Farben: Grün = Aufgabe, Hellblau = Termin, Blau = Arbeit, Orange = Fahrt, Lila 
 3. Jedes Widget antippen → Script **Planer Widget**.
 4. Optional über der Uhr (eine Zeile): dort Scriptable wählen → Script **Planer Widget**.
 
-Hinweis: iOS entscheidet selbst, wann ein Widget neu gezeichnet wird – auf dem Sperrbildschirm manchmal erst nach Stunden. Darum stehen dort feste Uhrzeiten; bei "noch …" steht dahinter, von wann die Angabe ist ("Stand 15:20"). Antippen öffnet den Planer und zeichnet neu.
+Hinweis: iOS entscheidet selbst, wann ein Widget neu gezeichnet wird – auf dem Sperrbildschirm manchmal erst nach Stunden. Darum stehen dort feste Uhrzeiten; bei "noch …" steht dahinter, von wann die Angabe ist ("Stand 15:20"). Antippen öffnet den Planer.
 
 ---
 
