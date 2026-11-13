@@ -121,6 +121,10 @@ function umgebung({ jetzt, nurRelativ }) {
   let suche = async text => (/unbekannt/i.test(text) ? []
     : [{ lat: '52.1', lon: '7.6', address: { road: `Gefunden ${text.split(',')[0]}`, house_number: '1', postcode: '11111', city: 'Teststadt' } }]);
   const osm = text => suche(text);
+  // OpenStreetMap-Routing: Auto 12 min (+3 Puffer = 15), Rad 14 min (+1 = 15)
+  let routing = async url => ({ code: 'Ok', routes: [{ duration: url.includes('routed-bike') ? 840 : 720, distance: 5000 }] });
+  const route = url => { routenAnfragen.push(url); return routing(url); };
+  const routenAnfragen = [];
   const treffer = (road, nr, plz, ort, lat = '52.1', lon = '7.6') => [{ lat, lon, address: { road, house_number: nr, postcode: plz, city: ort } }];
 
   const ctx = {
@@ -147,6 +151,7 @@ function umgebung({ jetzt, nurRelativ }) {
       constructor(url) { this.url = url; }
       async loadJSON() {
         if (this.url.startsWith('https://nominatim.openstreetmap.org/search')) return osm(new URL(this.url).searchParams.get('q'));
+        if (this.url.startsWith('https://routing.openstreetmap.de/')) return route(this.url);
         return JSON.parse(await this.loadString());
       }
       async loadString() {
@@ -196,7 +201,7 @@ function umgebung({ jetzt, nurRelativ }) {
   }
 
   const daten = n => path.join(wurzel, 'planer-daten', n);
-  return { ctx, wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, osm, treffer, setJetzt: d => { jetzt = d; }, setSuche: f => { suche = f; } };
+  return { ctx, wurzel, script, termin, termine, mitteilungen, erinnerungen, geoeffnet, daten, osm, treffer, routenAnfragen, setJetzt: d => { jetzt = d; }, setSuche: f => { suche = f; }, setRouting: f => { routing = f; } };
 }
 
 for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase b, Knopf Erledigt (Pfade ${nurRelativ ? 'relativ' : 'vom Hauptordner'})`, async () => {
@@ -248,17 +253,18 @@ for (const nurRelativ of [false, true]) test(`Kompletter Ablauf: Phase a, Phase 
   // Schicht von heute gibt es im Test nicht, darum selbst eintragen wie im echten Kalender
   u.termin('Arbeit', 'Arbeit', um(7), um(16), 'Werkweg 2, 11111 Teststadt');
 
-  // Kurzbefehl liefert 15 Min. für alles
-  const a2 = await u.script('Planer Planen.js', { shortcutParameter: 'a' });
-  // Kurzbefehl: Text "RAD", Fahrzeiten, "AUTO", Fahrzeiten (Listen werden zeilenweise eingefügt)
-  const text = ['RAD', ...Array.from(a2.rad, () => '15 Min.'), 'AUTO', ...Array.from(a2.auto, () => '15 Min.')].join('\n');
-  assert.ok(a2.rad.length > 0 && a2.auto.length > 0);
-  const alleOrte = [...Array.from(a2.rad), ...Array.from(a2.auto)].flatMap(s => [s.von, s.nach]);
-  const erlaubt = ['Teststraße 1, 11111 Teststadt', 'Werkweg 2, 11111 Teststadt', 'Praxisplatz 3, 11111 Teststadt', 'Hallenweg 1, 11111 Teststadt'];
-  assert.ok(alleOrte.every(o => erlaubt.includes(o)), alleOrte.join(' / '));
-  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "unbekannt irgendwo"/);
-  const b = await u.script('Planer Planen.js', { shortcutParameter: text });
+  // Kurzbefehl: ein Aufruf plant alles; Fahrzeiten über OpenStreetMap (Auto 12+3, Rad 14+1 = 15 min)
+  const b = await u.script('Planer Planen.js', {});
   assert.ok(!b.fehler, b.fehler);
+  assert.deepStrictEqual([Array.from(b.rad).length, Array.from(b.auto).length], [0, 0], 'keine Wegzeit-Abfragen mehr');
+  assert.ok(u.routenAnfragen.some(x => x.includes('/routed-bike/')) && u.routenAnfragen.some(x => x.includes('/routed-car/')), u.routenAnfragen.join(' '));
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "unbekannt irgendwo"/);
+  // älterer Kurzbefehl schickt danach noch "RAD … AUTO …": nur die Wecker zurück, nicht doppelt planen
+  const text = 'RAD\n\nAUTO\n';
+  const anfragen = u.routenAnfragen.length;
+  const alt = await u.script('Planer Planen.js', { shortcutParameter: text });
+  assert.deepStrictEqual(Array.from(alt.wecker, w => w.zeit), Array.from(b.wecker, w => w.zeit));
+  assert.strictEqual(u.routenAnfragen.length, anfragen);
   assert.deepStrictEqual(Array.from(b.wecker, w => w.zeit), ['16:40', '19:40', '05:45', '06:40']); // 05:45 Aufstehen, 06:40 los zur Freitagsschicht
 
   const zeit = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -416,15 +422,15 @@ test('Orte: nicht gefundene im Hintergrund einmal am Tag neu gesucht, in der App
   u.setSuche(async () => { if (!geht) throw new Error('aus'); return [{ name: 'Kino', lat: '1', lon: '2', address: { city: 'Teststadt' } }]; });
   u.termin('Privat', 'Kino', new Date(2026, 10, 12, 19), new Date(2026, 10, 12, 21), 'Kino am Markt');
   let a = await u.script('Planer Planen.js', {});
-  assert.strictEqual(a.anzahl, 0);
+  assert.ok(!a.fehler, a.fehler);
+  assert.strictEqual(u.routenAnfragen.length, 0);
   assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Ort nicht gefunden: "Kino am Markt" \(aus\)/);
   geht = true;
   let suchen = 0;
   const alt = u.osm;
   u.setSuche(async () => { suchen++; return [{ name: 'Kino', lat: '1', lon: '2', address: { city: 'Teststadt' } }]; });
   a = await u.script('Planer Planen.js', {});
-  assert.strictEqual(a.anzahl, 0, 'im Hintergrund heute nicht noch einmal');
-  assert.strictEqual(suchen, 0);
+  assert.strictEqual(suchen, 0, 'im Hintergrund heute nicht noch einmal');
   assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /heute schon gesucht/);
   u.setJetzt(new Date(2026, 10, 13, 9));
   u.termin('Privat', 'Kino', new Date(2026, 10, 13, 19), new Date(2026, 10, 13, 21), 'Kino am Markt');
@@ -432,10 +438,16 @@ test('Orte: nicht gefundene im Hintergrund einmal am Tag neu gesucht, in der App
   assert.ok(suchen > 0 && alt, 'am nächsten Tag neu gesucht');
   const orte = JSON.parse(fs.readFileSync(u.daten('orte.json'), 'utf8'));
   assert.ok(orte.eintraege['kino am markt'] && orte.eintraege['kino am markt'].lat === 1);
-  // nur bei OpenStreetMap gefunden -> nicht an "Wegzeit abrufen", sondern geschätzt
-  assert.strictEqual(a.auto.length, 0);
-  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Fahrzeit geschätzt \(Luftlinie, Auto\)/);
-  const cache = JSON.parse(fs.readFileSync(u.daten('fahrzeiten.json'), 'utf8'));
+  // Fahrzeit über OpenStreetMap berechnet (Auto 12 + 3 min Puffer)
+  let cache = JSON.parse(fs.readFileSync(u.daten('fahrzeiten.json'), 'utf8'));
+  assert.ok(Object.values(cache).some(c => c.quelle === 'osm' && c.min === 15), JSON.stringify(cache));
+  // Routing nicht erreichbar -> Schätzung aus der Luftlinie (gilt nur heute)
+  u.setRouting(async () => { throw new Error('offline'); });
+  u.setJetzt(new Date(2026, 10, 14, 9));
+  u.termin('Privat', 'Schwimmen', new Date(2026, 10, 14, 15), new Date(2026, 10, 14, 16), 'Bad am See');
+  await u.script('Planer Planen.js', {});
+  assert.match(fs.readFileSync(u.daten('log.txt'), 'utf8'), /Fahrzeit geschätzt \(Luftlinie, Auto; Routing: offline\)/);
+  cache = JSON.parse(fs.readFileSync(u.daten('fahrzeiten.json'), 'utf8'));
   assert.ok(Object.values(cache).some(c => c.geschaetzt));
 });
 
@@ -463,7 +475,7 @@ test('Extras: Geburtstag mit Geschenk, Frist, Checkliste, Abhaken in der Fristen
   assert.ok(titel.includes('Geschenk fehlt noch'), 'Max am 24.11. -> Erinnerung am 17.11.');
   assert.strictEqual(titel.filter(t => t === 'Geburtstag heute').length, 1, 'nur Oma (15.11.), Max (24.11.) ist weiter als 8 Tage');
   const check = u.mitteilungen.find(m => m.title === 'Checkliste: Training');
-  assert.strictEqual(check.trigger.getHours() * 60 + check.trigger.getMinutes(), 19 * 60 + 26); // Abfahrt 19:56 (geschätzt 4 min, gleiche Koordinaten) - 30
+  assert.strictEqual(check.trigger.getHours() * 60 + check.trigger.getMinutes(), 19 * 60 + 15); // Abfahrt 19:45 (Routing 15 min) - 30
   // Geschenk für Max ab 10.11. fällig -> heute eingeplant; Frist-Aufgabe (ab 03.11.) auch
   const planer = u.termine.filter(t => t.calendar.title === 'Planer').map(t => t.title);
   assert.ok(planer.some(t => t.startsWith('Geschenk für Max Mustermann')), planer.join(' | '));
@@ -534,7 +546,7 @@ test('Stufe 1: Krank, verschobener Block, Einkauf, Medikament, Folgeaufgabe, Wac
   const neuStart = new Date(bad.startDate.getTime() + 60 * 60000);
   bad.endDate = new Date(bad.endDate.getTime() + 60 * 60000);
   bad.startDate = neuStart;
-  await u.script('Planer Planen.js', { shortcutParameter: 'RAD\nAUTO\n' });
+  await u.script('Planer Planen.js', {});
   planer = u.termine.filter(t => t.calendar.title === 'Planer');
   const badNeu = planer.find(t => t.title === 'Bad putzen');
   assert.strictEqual(badNeu.startDate.getTime(), neuStart.getTime());
@@ -639,6 +651,8 @@ test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, 
     constructor(url) { this.url = url; urls.push(url); }
     async loadJSON() {
       if (this.url.includes('nominatim')) return u.osm('x');
+      // Routing: Rad 12 + 1 = 13 min, Auto 6 + 3 = 9 min
+      if (this.url.includes('routing.openstreetmap.de')) return { code: 'Ok', routes: [{ duration: this.url.includes('routed-bike') ? 720 : 360 }] };
       // Freitag 06:00 und 07:00 Regen 80 %, sonst trocken
       const time = [], precipitation_probability = [];
       for (let d = 12; d <= 14; d++) for (let h = 0; h < 24; h++) {
@@ -867,6 +881,48 @@ test('Planer sagen über Siri ohne Claude: Termin in den Standard-Kalender, Mitt
   await u.script('Planer Sprache.js', { shortcutParameter: 'DIKTAT: blabla' });
   assert.ok(u.mitteilungen.some(m => m.title === 'Planer: Nicht verstanden'));
   assert.ok(!fs.readFileSync(u.daten('log.txt'), 'utf8').includes('FEHLER'));
+});
+
+test('Früher zuhause, Einladungen ohne Zusage nur als Info (Widget, Morgen-Überblick)', async () => {
+  const um = (t, h, m = 0) => new Date(2026, 10, t, h, m);
+  const u = umgebung({ jetzt: um(12, 15, 20) }); // Donnerstag
+  fs.mkdirSync(path.join(u.wurzel, 'planer-daten'));
+  fs.writeFileSync(u.daten('einstellungen.json'), JSON.stringify({
+    eingerichtet: true,
+    orte: { zuhause: { adresse: 'Teststraße 1, 11111 Teststadt' }, arbeit: { adresse: 'Werkweg 2, 11111 Teststadt' } },
+  }));
+  fs.writeFileSync(u.daten('aufgaben.json'), '[]');
+  u.termin('Arbeit', 'Arbeit', um(12, 7), um(12, 16), 'Werkweg 2, 11111 Teststadt');
+  const einladung = status => [{ isCurrentUser: false, name: 'Organisatorin', role: 'chair', status: 'accepted', type: 'person' }, { isCurrentUser: true, name: 'Ich', role: 'required', status, type: 'person' }];
+  u.termin('Privat', 'Yoga', um(12, 18), um(12, 19), 'Studio Mitte').attendees = einladung('pending');
+  u.termin('Privat', 'Yoga', um(13, 18), um(13, 19), 'Studio Mitte').attendees = einladung('pending');
+  u.termin('Privat', 'Kino', um(12, 20), um(12, 22), 'Kino am Markt').attendees = einladung('accepted');
+
+  const a = await u.script('Planer Planen.js', { shortcutParameter: 'heim' });
+  assert.ok(!a.fehler, a.fehler);
+  const plan = JSON.parse(fs.readFileSync(u.daten('plan.json'), 'utf8'));
+  const arbeit = plan.termine.find(t => t.titel === 'Arbeit');
+  assert.strictEqual(new Date(arbeit.end).getHours() * 60 + new Date(arbeit.end).getMinutes(), 15 * 60 + 5, 'Ankunft 15:20 minus 15 min Rad');
+  assert.ok(!plan.termine.some(t => t.titel === 'Yoga'), 'Einladung ohne Zusage blockiert nichts');
+  assert.ok(plan.termine.some(t => t.titel === 'Kino'), 'zugesagt = normaler Termin');
+  assert.deepStrictEqual(plan.infos.map(i => i.titel), ['Yoga', 'Yoga']);
+  assert.ok(!plan.fahrten.some(f => f.zielName === 'Yoga'), 'keine Fahrt zur Info');
+  const log = fs.readFileSync(u.daten('log.txt'), 'utf8');
+  assert.match(log, /Früher zuhause: "Arbeit" gilt bis 15:05 als beendet/);
+  assert.match(log, /nur als Info/);
+  // Morgen-Überblick für Freitag nennt die Info
+  const morgen = u.mitteilungen.find(m => m.title === 'Dein Tag · Fr 13.11.');
+  assert.ok(morgen && /Info: 18:00 Yoga/.test(morgen.body), u.mitteilungen.map(m => `${m.title}: ${m.body}`).join(' | '));
+  // Widget zeigt die Info von heute
+  const prot = oberflaeche(u.ctx);
+  u.ctx.Script.setWidget = () => {};
+  u.ctx.config = { runsInWidget: true, widgetFamily: 'medium' };
+  await u.script('Planer Widget.js', {});
+  assert.ok(prot.texte.includes('Info: 18:00 Yoga'), prot.texte.join(' | '));
+  u.ctx.config = { runsInApp: false };
+  // Wieder losgefahren: "früher zuhause" gilt nicht mehr
+  await u.script('Planer Abfahrt.js', {});
+  assert.strictEqual(JSON.parse(fs.readFileSync(u.daten('zustand.json'), 'utf8')).heimAb, null);
 });
 
 test('Manifest enthält alle Scripts', () => {

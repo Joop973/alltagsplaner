@@ -17,6 +17,7 @@ const SO = hole('core/sonder');
 const R = hole('core/tagesrhythmus');
 const L = hole('core/lernen');
 const AN = hole('core/ansicht');
+const ROUT = hole('adapter/routing');
 const DAT = hole('adapter/dateien');
 const KAL = hole('adapter/kalender');
 const MIT = hole('adapter/mitteilungen');
@@ -50,10 +51,20 @@ function pruefen(einst) {
 }
 
 // Termine lesen; Termine ohne Ort bekommen den Ort, den derselbe Titel schon öfter hatte.
-async function termineMitOrt(einst, jetzt, z) {
-  const roh = await KAL.termineLesen(einst, jetzt);
+// Einladungen ohne Zusage sind nur Randbemerkung (infos). Bist du heute früher heimgekommen,
+// endet ein gerade laufender Termin woanders (nur für die Planung).
+async function termineUndInfos(einst, jetzt, z, cache) {
+  const alle = await KAL.termineLesen(einst, jetzt);
+  const roh = alle.filter(t => !t.info);
+  const infos = alle.filter(t => t.info).map(t => ({ titel: t.titel, start: t.start, end: t.end }));
   z.titelOrte = AL.titelOrteLernen(z.titelOrte, roh);
-  return AL.ortErgaenzen(roh, z.titelOrte);
+  let termine = AL.ortErgaenzen(roh, z.titelOrte);
+  const heimAb = z.heimAb && D.ymd(new Date(z.heimAb)) === D.ymd(jetzt) ? z.heimAb : null;
+  if (heimAb) {
+    termine = AL.fruehHeim(termine, heimAb, einst, k => F.cacheWert(cache || {}, k));
+    for (const t of termine.filter(x => x.fruehHeim)) await log(`Früher zuhause: "${t.titel}" gilt bis ${D.hm(new Date(t.end))} als beendet.`);
+  }
+  return { termine, infos };
 }
 
 // Tagesarten der nächsten "tage" Tage (frei, krank, verreist, heute keine Aufgaben)
@@ -66,68 +77,56 @@ async function tagesInfoLesen(einst, jetzt, z, tage) {
   });
 }
 
-// Phase (a): Schichten schreiben, benötigte Strecken an den Kurzbefehl geben
-// (getrennte Listen "rad" und "auto" mit {von, nach}).
-async function phaseA() {
-  const { einst, cache } = await laden();
-  pruefen(einst);
-  const jetzt = new Date();
-  const z = await zustandLaden();
-  await log('--- Planen Phase a ---');
-  const info = await tagesInfoLesen(einst, jetzt, z, (einst.schichten.wochen || 8) * 7);
-  z.schichtRec = await KAL.schichtenSchreiben(einst, jetzt, log, { freieTage: T.freieTage(info), rec: z.schichtRec });
-  const termine = await termineMitOrt(einst, jetzt, z);
-  await zustandSpeichern(z);
+// Fahrzeiten der nötigen Strecken selbst berechnen (OpenStreetMap), nur neue oder alte (30 Tage).
+async function fahrzeitenAktualisieren(einst, cache, termine, jetzt) {
   const ablauf = A.berechneAblauf(termine, { einst, fahrzeit: k => F.cacheWert(cache, k) });
   const heute = D.ymd(jetzt);
   const fehlen = ablauf.strecken.filter(s => !F.istFrisch(cache, s.key, heute, einst.regeln.cacheTage));
+  if (!fehlen.length) { await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, alle Fahrzeiten bekannt.`); return; }
   const sichere = [einst.orte.zuhause.adresse, einst.orte.arbeit.adresse];
   let { gut, schlecht } = await ORT.streckenPruefen(fehlen, heute, log, sichere);
   // Nicht gefunden, aber der Termin läuft gerade? Dann bin ich dort: Standort lernen und neu prüfen.
   if (schlecht.length && await ORT.standortLernen(termine, jetzt, log)) {
     ({ gut, schlecht } = await ORT.streckenPruefen(fehlen, heute, log, sichere));
   }
-  // Nur sichere Orte an "Wegzeit abrufen" geben (sonst bricht der ganze Kurzbefehl ab),
-  // für die anderen die Fahrzeit aus der Luftlinie schätzen.
-  const noetig = gut.filter(s => s.sicher);
-  let geschaetzt = 0;
-  for (const s of gut.filter(x => !x.sicher)) {
-    const min = F.schaetzung(s.vonKoord, s.nachKoord, s.modus);
-    if (min == null) { await log(`Fahrzeit unbekannt (keine Koordinaten): ${s.von} -> ${s.nach} – nehme ${einst.regeln.fallbackMin} min.`); continue; }
-    cache[s.key] = { min, datum: heute, geschaetzt: true };
-    geschaetzt++;
-    await log(`Fahrzeit geschätzt (Luftlinie, ${s.modus}): ${s.von} -> ${s.nach} = ${min} min`);
-  }
-  if (geschaetzt) await DAT.schreiben('fahrzeiten.json', cache);
+  const n = await ROUT.berechnen(gut, cache, heute, einst.regeln, log);
+  await DAT.schreiben('fahrzeiten.json', cache);
   for (const x of schlecht) {
     if (x.ignoriert) continue;
     await log(`WARNUNG Ort nicht gefunden: "${x.ort}" (${x.fehler}) – nehme ${einst.regeln.fallbackMin} min. In "Planer" → "Einstellungen" → "Gelernte Orte" kannst du die Adresse eintragen.`);
   }
-  const { ausgabe, offen } = F.streckenAufteilen(noetig);
-  await DAT.schreiben('offen.json', { erstellt: jetzt.toISOString(), ...offen });
-  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, abfragen: ${ausgabe.rad.length} Rad, ${ausgabe.auto.length} Auto, ${schlecht.length} Ort(e) nicht gefunden.`);
-  return ausgabe;
+  await log(`${termine.length} Termine, ${ablauf.strecken.length} Strecken, neu: ${n.berechnet} berechnet, ${n.geschaetzt} geschätzt, ${schlecht.length} Ort(e) nicht gefunden.`);
 }
 
-// Phase (b): Fahrzeiten übernehmen, planen, Kalender + Mitteilungen schreiben, Wecker zurückgeben.
-async function phaseB(text) {
+// Vom Kurzbefehl "Planer planen": alles in Scriptable (Schichten, Fahrzeiten, Planung), gibt die Wecker zurück.
+// param "heim": Automation "Ankommen zuhause". opt.mitWecker: false = Test aus der App (Wecker bleiben).
+async function planen(param, opt) {
+  const o = { mitWecker: true, ...(opt || {}) };
   const { einst, aufgaben, cache } = await laden();
   pruefen(einst);
   const jetzt = new Date();
-  await log('--- Planen Phase b ---');
-  const offen = await DAT.lesen('offen.json', { strecken: {}, rad: [], auto: [] });
-  await log(`Vom Kurzbefehl erhalten: ${JSON.stringify(String(text).slice(0, 600))}`);
-  const erg = F.ergebnisseLesen(text, offen);
-  for (const e of erg) {
-    const s = offen.strecken[e.id];
-    await log(`Fahrzeit ${s.modus} ${s.von} -> ${s.nach}: "${e.roh}" = ${e.min == null ? 'unlesbar' : e.min + ' min'}`);
+  const z = await zustandLaden();
+  await log(`--- Planen${/^\s*heim/i.test(param || '') ? ' (zuhause angekommen)' : ''} ---`);
+  if (/^\s*heim/i.test(param || '')) z.heimAb = jetzt.toISOString();
+  const info = await tagesInfoLesen(einst, jetzt, z, (einst.schichten.wochen || 8) * 7);
+  z.schichtRec = await KAL.schichtenSchreiben(einst, jetzt, log, { freieTage: T.freieTage(info), rec: z.schichtRec });
+  const { termine } = await termineUndInfos(einst, jetzt, z, cache);
+  await zustandSpeichern(z);
+  await fahrzeitenAktualisieren(einst, cache, termine, jetzt);
+  const plan = await planenUndSchreiben(einst, aufgaben, cache, jetzt, { mitWecker: o.mitWecker });
+  // rad/auto leer: ältere Kurzbefehle mit "Wegzeit abrufen" laufen so ohne Abfragen durch
+  return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length, rad: [], auto: [] };
+}
+
+// Älterer Kurzbefehl schickt danach noch "RAD … AUTO …": dann ist schon geplant, nur die Wecker zurückgeben.
+async function phaseB() {
+  const plan = await DAT.lesen('plan.json', null);
+  const jetzt = new Date();
+  if (plan && jetzt - new Date(plan.erstellt) < 5 * 60000) {
+    const wecker = (plan.wecker || []).filter(w => new Date(w.zeitpunkt) > jetzt);
+    return { wecker, anzahl: wecker.length, bloecke: (plan.bloecke || []).length };
   }
-  const fehlend = Object.keys(offen.strecken || {}).length - erg.filter(e => e.min != null).length;
-  if (fehlend > 0) await log(`${fehlend} Fahrzeit(en) fehlen, nehme alte Werte oder ${einst.regeln.fallbackMin} min.`);
-  F.cacheAktualisieren(cache, erg, D.ymd(jetzt));
-  await DAT.schreiben('fahrzeiten.json', cache);
-  const plan = await planenUndSchreiben(einst, aufgaben, cache, jetzt, { mitWecker: true });
-  return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length };
+  return planen('');
 }
 
 // Wetter für Zuhause (Open-Meteo, ohne Anmeldung). Lage auf ca. 1 km gerundet, 2 Stunden gemerkt.
@@ -136,8 +135,9 @@ async function wetterLaden(einst, jetzt, z) {
   try {
     const adr = einst.orte.zuhause.adresse;
     if (!z.heimKoord || z.heimKoord.adresse !== adr) {
+      if (z.heimKoordVersucht === D.ymd(jetzt)) return () => null; // heute schon vergeblich gesucht
       const g = await ORT.koordinaten(adr);
-      if (!g) { await log('WARNUNG Wetter: Adresse Zuhause nicht gefunden.'); return () => null; }
+      if (!g) { z.heimKoordVersucht = D.ymd(jetzt); await log('WARNUNG Wetter: Adresse Zuhause nicht gefunden.'); return () => null; }
       z.heimKoord = { adresse: adr, lat: R.runden(g.lat), lon: R.runden(g.lon) };
     }
     const alt = z.wetter;
@@ -223,7 +223,7 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   const sonderStatus = await SON.statusLaden();
   const alltagAufgaben = SO.statusAnwenden(alltag.aufgaben, sonderStatus, jetzt);
 
-  const termine = await termineMitOrt(einst, jetzt, z);
+  const { termine, infos } = await termineUndInfos(einst, jetzt, z, cache);
   const info = await tagesInfoLesen(einst, jetzt, z, einst.regeln.tage + 1);
   const sperrTage = T.sperrTage(info);
   const bestehend = await KAL.planerBloeckeLesen(einst, jetzt);
@@ -243,7 +243,8 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
   const checks = SO.checklistenFuer(plan.ablauf.fahrten, extra.checklisten, jetzt, einst.regeln.ruheVorAbfahrt);
   if (checks.length) await log(`Checklisten: ${checks.map(c => `${D.kurz(new Date(c.zeit))} ${D.hm(new Date(c.zeit))} ${c.titel}`).join(', ')}`);
   // Tagesabschluss, Morgen-Überblick (heute und morgen), Hinweis am Blockende
-  const kurzPlan = { bloecke: plan.bloecke, fahrten: plan.ablauf.fahrten, termine: plan.ablauf.termine, tagInfo: plan.tagInfo };
+  const kurzPlan = { bloecke: plan.bloecke, fahrten: plan.ablauf.fahrten, termine: plan.ablauf.termine, tagInfo: plan.tagInfo, infos };
+  if (infos.length) await log(`${infos.length} Termin(e) anderer nur als Info (keine Zusage): ${infos.slice(0, 5).map(i => i.titel).join(', ')}`);
   const rhythmus = [
     R.tagesabschluss(kurzPlan, jetzt, einst.abschluss, einst.aufstehen, await erledigtHeute(jetzt, aufgaben), AN.geschafftAm(await DAT.lesen('gedaechtnis.json', null), D.ymd(jetzt))),
     R.morgenUeberblick(kurzPlan, D.ymd(jetzt), jetzt, einst.morgen, einst.aufstehen, einst.regeln),
@@ -291,6 +292,7 @@ async function planenUndSchreiben(einst, aufgabenAlt, cache, jetzt, opt) {
     warnText,
     terminText,
     anzeige: { pause: einst.regeln.pauseNachHeim, ruhe: einst.regeln.ruheVorAbfahrt },
+    infos,
   });
   z.letzterLauf = jetzt.toISOString();
   await zustandSpeichern(z);
@@ -377,10 +379,10 @@ async function neuPlanen() {
   return planenUndSchreiben(einst, aufgaben, cache, new Date(), { mitWecker: false });
 }
 
-// Aus der App: Test mit Schichten, aber ohne Fahrzeit-Abfrage und ohne Wecker
+// Aus der App: alles planen (Schichten, Fahrzeiten), aber ohne Wecker
 async function ohneKurzbefehl() {
-  await phaseA();
-  return neuPlanen();
+  await planen('', { mitWecker: false });
+  return DAT.lesen('plan.json', {});
 }
 
 function kurzbefehlStarten(name) {
@@ -516,6 +518,9 @@ async function abfahrtMerken() {
     geplant: passt ? new Date(passt.abfahrt).toISOString() : null,
   }, jetzt);
   await log(passt ? `Abfahrt zu ${passt.zielName}: geplant ${D.hm(new Date(passt.abfahrt))}, tatsächlich ${D.hm(jetzt)}.` : `Abfahrt ${D.hm(jetzt)} (keine geplante Fahrt in der Nähe).`);
+  // wieder unterwegs: "früher zuhause" gilt nicht mehr
+  const z = await zustandLaden();
+  if (z.heimAb) { z.heimAb = null; await zustandSpeichern(z); }
 }
 
 // "Heute keine Aufgaben" an/aus
@@ -545,6 +550,6 @@ async function abschluss() { await DAT.logSchreiben(); }
 
 module.exports = {
   KURZBEFEHL, laden, einstellungenSpeichern, aufgabenSpeichern, zustandLaden, zustandSpeichern, medsLaden, medsSpeichern,
-  phaseA, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, abfahrtMerken, heuteKeineAufgaben, rueckstandAufloesen,
+  planen, phaseB, neuPlanen, ohneKurzbefehl, kurzbefehlStarten, aktion, abfahrtMerken, heuteKeineAufgaben, rueckstandAufloesen,
   lernstandLaden, lernAktion, fehler, abschluss,
 };

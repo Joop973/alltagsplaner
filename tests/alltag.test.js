@@ -114,3 +114,26 @@ test('Terminprüfung und Ort aus Titel', () => {
   g = AL.titelOrteLernen(g, [{ titel: 'Training', ort: 'Halle Süd' }]);
   assert.strictEqual(g.training.anzahl, 1);
 });
+
+test('Früher zuhause: laufender Termin woanders endet (Ankunft minus Heimweg)', () => {
+  const { standardEinstellungen } = require('../scripts/planer/core/standard');
+  const O = require('../scripts/planer/core/orte');
+  const einst = standardEinstellungen();
+  einst.orte.zuhause.adresse = 'Teststraße 1, 11111 Teststadt';
+  einst.orte.arbeit.adresse = 'Werkweg 2, 11111 Teststadt';
+  const um = (h, m = 0) => new Date(2026, 11 - 1, 12, h, m);
+  const termine = [
+    { titel: 'Arbeit', start: um(7), end: um(16), ort: 'Werkweg 2, 11111 Teststadt' },
+    { titel: 'Arzt', start: um(17), end: um(18), ort: 'Praxis Mitte' },
+    { titel: 'Kochen', start: um(15), end: um(17), ort: '' }, // zuhause: bleibt
+  ];
+  const radHeim = O.streckenSchluessel('Fahrrad', 'Werkweg 2, 11111 Teststadt', 'Teststraße 1, 11111 Teststadt');
+  const r = AL.fruehHeim(termine, um(15, 20).toISOString(), einst, k => (k === radHeim ? 15 : null));
+  assert.strictEqual(D.hm(r[0].end), '15:05');
+  assert.ok(r[0].fruehHeim);
+  assert.strictEqual(r[1].end, termine[1].end, 'Arzt läuft noch nicht');
+  assert.strictEqual(r[2].end, termine[2].end, 'Termin zuhause bleibt');
+  // ohne bekannte Fahrzeit: Ersatzzeit 20 min
+  assert.strictEqual(D.hm(AL.fruehHeim(termine, um(17, 30).toISOString(), einst, () => null)[1].end), '17:10');
+  assert.strictEqual(AL.fruehHeim(termine, null, einst, () => null), termine);
+});

@@ -1,4 +1,4 @@
-# Einrichtung am iPhone – Checkliste (Version 3.2)
+# Einrichtung am iPhone – Checkliste (Version 3.6)
 
 Abhaken, was schon erledigt ist. Ausführliche Kurzbefehl-Schritte: `docs/kurzbefehle.md`.
 
@@ -11,7 +11,7 @@ Abhaken, was schon erledigt ist. Ausführliche Kurzbefehl-Schritte: `docs/kurzbe
 ## Jetzt (ca. 45 Minuten)
 
 ### 1. Neue Version laden (2 min)
-1. Scriptable → **Planer Update** antippen. Oben muss **Version 3.2.0** stehen.
+1. Scriptable → **Planer Update** antippen. Oben muss die neueste Version stehen (z. B. **3.6.0**).
 2. Kurzbefehl **Planer planen** einmal starten.
 3. Neue Nachfragen von iOS (Erinnerungen, Mitteilungen, Standort) mit **Erlauben** bzw. **Immer** bestätigen.
 
@@ -25,6 +25,10 @@ Abhaken, was schon erledigt ist. Ausführliche Kurzbefehl-Schritte: `docs/kurzbe
 1. Home-Bildschirm lange drücken → **Bearbeiten** → **Widget hinzufügen** → **Scriptable** → mittlere Größe.
 2. Widget antippen → Script **Planer Widget** → "When Interacting": **Run Script**.
 3. Sperrbildschirm: Sperrbildschirm lange drücken → **Anpassen** → Feld unter der Uhr → Scriptable → rechteckig und/oder rund → Script **Planer Widget** (Details: `docs/kurzbefehle.md` Abschnitt 4).
+
+### 3b. Kurzbefehl und Automation "Ankommen" umbauen (Version 3.6, 10 min)
+1. Kurzbefehl **Planer planen** kürzen: alles mit Fahrzeiten löschen (Wegzeit abrufen, Text RAD/AUTO, zweites Script ausführen). Parameter von "Script ausführen" = **Kurzbefehleingabe**. Genaue Schritte: `docs/kurzbefehle.md` Abschnitt 2.
+2. Automation **Ankommen zuhause**: Aktion **Text** `heim` davor, bei "Planer planen ausführen" als **Eingabe** die Variable **Text**. Siehe Abschnitt 3.
 
 ### 4. Automation "Verlassen" (3 min)
 Kurzbefehle → **Automation** → **+** → **Verlassen** → deine Adresse → **Sofort ausführen** → neuer leerer Kurzbefehl → **Script ausführen** → **Planer Abfahrt** → Show When Run **aus**.

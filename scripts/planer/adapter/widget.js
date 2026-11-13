@@ -145,6 +145,16 @@ async function erstellen(familie) {
       text(w, `Danach ${D.hm(j.naechstes.start)}: ${j.naechstes.titel}`, 11, F.leise);
     }
     w.addSpacer();
+    // Randbemerkungen: Termine anderer ohne deine Zusage (nur Info)
+    if (plan && !klein) {
+      const heute = D.ymd(jetzt);
+      const infos = (plan.infos || []).filter(i => D.ymd(new Date(i.start)) === heute && new Date(i.end) > jetzt)
+        .sort((a, b) => new Date(a.start) - new Date(b.start)).slice(0, familie === 'large' ? 2 : 1);
+      for (const i of infos) {
+        text(w, `Info: ${D.hm(new Date(i.start))} ${i.titel}`, 11, F.leise);
+        w.addSpacer(2);
+      }
+    }
     const fuss = w.addStack();
     const n = AN.geschafftAm(ged, D.ymd(jetzt));
     if (n) text(fuss, `Heute geschafft: ${n}`, 11, F.erfolg);

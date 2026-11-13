@@ -125,3 +125,14 @@ test('Fahrzeit aus Luftlinie schätzen', () => {
   assert.strictEqual(F.istFrisch(cache, 'k', '2026-11-12', 30), false);
   assert.strictEqual(F.istFrisch(cache, 'e', '2026-11-12', 30), true);
 });
+
+test('OpenStreetMap-Routing: Adresse und Minuten mit Puffer', () => {
+  const F = require('../scripts/planer/core/fahrzeiten');
+  const a = { lat: 52.5, lon: 7.25 }, b = { lat: 52.6, lon: 7.3 };
+  assert.strictEqual(F.routingUrl('Fahrrad', a, b), 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/7.250000,52.500000;7.300000,52.600000?overview=false&alternatives=false&steps=false');
+  assert.match(F.routingUrl('Auto', a, b), /\/routed-car\//);
+  assert.strictEqual(F.minutenAusRouting({ code: 'Ok', routes: [{ duration: 720 }] }, 'Auto', { pufferAuto: 3 }), 15);
+  assert.strictEqual(F.minutenAusRouting({ code: 'Ok', routes: [{ duration: 840 }] }, 'Fahrrad', {}), 15);
+  assert.strictEqual(F.minutenAusRouting({ code: 'NoRoute', routes: [] }, 'Auto', {}), null);
+  assert.strictEqual(F.minutenAusRouting(null, 'Auto', {}), null);
+});

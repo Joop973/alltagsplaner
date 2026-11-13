@@ -1,9 +1,10 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
 // icon-color: deep-green; icon-glyph: route;
-// Wird vom Kurzbefehl "Planer planen" aufgerufen.
-// Parameter leer (oder "a"): benötigte Strecken ausgeben.
-// Parameter = Text mit Zeilen "RAD", Fahrzeiten, "AUTO", Fahrzeiten: planen und Wecker ausgeben.
+// Wird vom Kurzbefehl "Planer planen" aufgerufen: plant alles (Schichten, Fahrzeiten über
+// OpenStreetMap, Aufgaben, Mitteilungen) und gibt die Wecker zurück ({wecker: [{zeit, name}]}).
+// Parameter "heim" (Automation "Ankommen zuhause"): ein laufender Termin woanders ist vorbei.
+// Ältere Kurzbefehle schicken danach "RAD … AUTO …": dann nur die Wecker zurückgeben.
 const P = importModule('planer/adapter/planung');
 const F = importModule('planer/core/fahrzeiten');
 
@@ -16,7 +17,7 @@ try {
   if (F.istPhaseB(text)) {
     Script.setShortcutOutput(await P.phaseB(text));
   } else {
-    Script.setShortcutOutput(await P.phaseA());
+    Script.setShortcutOutput(await P.planen(text));
   }
 } catch (e) {
   await P.fehler(e);

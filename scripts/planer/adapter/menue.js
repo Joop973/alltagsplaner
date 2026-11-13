@@ -534,7 +534,9 @@ const REGELN = [
   ['weckerVorlauf', 'Wecker vor Abfahrt (min)'],
   ['weckerStunden', 'Wecker für die nächsten (Std.)'],
   ['fallbackMin', 'Fahrzeit, wenn unbekannt (min)'],
-  ['cacheTage', 'Fahrzeiten neu abfragen nach (Tagen)'],
+  ['cacheTage', 'Fahrzeiten neu berechnen nach (Tagen)'],
+  ['pufferAuto', 'Auto: Puffer zur Fahrzeit (min)'],
+  ['pufferRad', 'Rad: Puffer zur Fahrzeit (min)'],
   ['planruhe', 'Planruhe: Blöcke bleiben an ihrer Zeit', 'schalter'],
   ['besorgungenSonntags', 'Besorgungen auch sonntags', 'schalter'],
 ];

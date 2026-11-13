@@ -109,4 +109,20 @@ function schaetzung(a, b, modus) {
   return Math.max(3, Math.round(min));
 }
 
-module.exports = { minutenAusText, streckenAufteilen, istPhaseB, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch, schaetzung };
+// Fahrzeit über OpenStreetMap-Routing (FOSSGIS-Server, kostenlos, ohne Anmeldung, ohne Stau).
+// a, b: {lat, lon}
+const ROUTING = { Fahrrad: 'routed-bike', Auto: 'routed-car', 'Zu Fuß': 'routed-foot' };
+function routingUrl(modus, a, b) {
+  const profil = ROUTING[modus] || ROUTING.Auto;
+  const p = x => `${Number(x.lon).toFixed(6)},${Number(x.lat).toFixed(6)}`;
+  return `https://routing.openstreetmap.de/${profil}/route/v1/driving/${p(a)};${p(b)}?overview=false&alternatives=false&steps=false`;
+}
+// Antwort -> Minuten (mit Puffer) oder null
+function minutenAusRouting(json, modus, regeln) {
+  const r = json && json.code === 'Ok' && Array.isArray(json.routes) ? json.routes[0] : null;
+  if (!r || typeof r.duration !== 'number') return null;
+  const puffer = modus === 'Fahrrad' ? ((regeln && regeln.pufferRad) ?? 1) : ((regeln && regeln.pufferAuto) ?? 3);
+  return Math.max(1, Math.round(r.duration / 60) + puffer);
+}
+
+module.exports = { routingUrl, minutenAusRouting, minutenAusText, streckenAufteilen, istPhaseB, ergebnisseLesen, cacheAktualisieren, cacheWert, istFrisch, schaetzung };

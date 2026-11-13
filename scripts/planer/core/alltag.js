@@ -194,7 +194,28 @@ function ortErgaenzen(termine, gesehen) {
   });
 }
 
+// Früher zuhause: Läuft laut Kalender gerade ein Termin woanders (Arbeit, Arzt …), während du schon
+// zuhause angekommen bist, ist er für die Planung vorbei (Ende = Ankunft minus Heimweg). Nur Planung,
+// der Kalender bleibt. fahrzeit(key) -> Minuten oder null
+function fruehHeim(termine, heimAb, einst, fahrzeit) {
+  if (!heimAb) return termine;
+  const h = new Date(heimAb);
+  if (isNaN(h)) return termine;
+  return termine.map(t => {
+    const s = new Date(t.start), e = new Date(t.end);
+    if (!(s < h && h < e)) return t;
+    const art = O.ortArt(t.ort, einst.orte);
+    if (art === 'zuhause') return t;
+    const ziel = art === 'arbeit' ? (einst.orte.arbeit.adresse || einst.orte.arbeit.name || 'Arbeit') : String(t.ort).trim();
+    const modus = O.verkehrsmittel(art, 'zuhause', false, einst.verkehr);
+    const min = fahrzeit ? fahrzeit(O.streckenSchluessel(modus, ziel, einst.orte.zuhause.adresse || 'Zuhause')) : null;
+    const ende = new Date(Math.max(s.getTime() + 60000, h.getTime() - (min == null ? einst.regeln.fallbackMin : min) * 60000));
+    return { ...t, end: ende, fruehHeim: true };
+  });
+}
+
 module.exports = {
+  fruehHeim,
   einkaufAufgabe, medEinnahmen, einnahmeSchluessel, medMitteilungen, medVorratTage, medNachkauf, medGenommen,
   folgeMitteilungen, muellMitteilungen, terminWarnungen, titelOrteLernen, ortErgaenzen, kurzDatum,
 };

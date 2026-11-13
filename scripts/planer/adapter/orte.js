@@ -89,19 +89,18 @@ function bekannt(d, k, heute) {
   return D.tageZwischen(D.ausYmd(e.datum), D.ausYmd(heute)) <= SUCHE_GUELTIG_TAGE ? e : null;
 }
 
-// strecken [{key, von, nach, modus}] -> {gut: [...mit gefundenen Adressen], schlecht: [{strecke, ort, fehler, ignoriert}]}
-// gut[i].sicher: beide Orte kennt "Wegzeit abrufen" sicher (Zuhause/Arbeit, von Hand, per Standort gelernt).
-// Nur bei der OpenStreetMap gefundene Adressen können "Wegzeit abrufen" abbrechen lassen
-// ("Keine Konvertierung von Text in Standort") – dafür gibt es Koordinaten für eine Schätzung.
-// sichereTexte: Ort-Texte, die immer sicher sind (eingestellte Adressen Zuhause/Arbeit).
+// strecken [{key, von, nach, modus}] -> {gut: [...mit Adressen und Koordinaten], schlecht: [{strecke, ort, fehler, ignoriert}]}
+// gut[i].vonKoord / nachKoord: {lat, lon} für die Fahrzeit-Berechnung (null, wenn unbekannt).
+// sichereTexte: eingestellte Adressen Zuhause/Arbeit (werden unverändert weitergegeben).
 async function streckenPruefen(strecken, heute, log, sichereTexte) {
   const sicherSet = new Set((sichereTexte || []).filter(Boolean).map(O.norm));
   const d = await laden();
   const ergebnis = new Map();
   // Im Hintergrund (Kurzbefehl, Automation) ist die Laufzeit knapp: nicht gefundene Orte
-  // höchstens einmal am Tag neu suchen und insgesamt höchstens 15 Sekunden suchen.
+  // höchstens einmal am Tag neu suchen und insgesamt höchstens 10 Sekunden suchen.
   const hintergrund = !imVordergrund();
   const startZeit = Date.now();
+  const zeitUm = () => hintergrund && Date.now() - startZeit > 10000;
   async function suchen(text) {
     const k = O.norm(text);
     if (ergebnis.has(k)) return ergebnis.get(k);
@@ -110,9 +109,16 @@ async function streckenPruefen(strecken, heute, log, sichereTexte) {
     const o = d.offen[k];
     if (e) {
       r = { adresse: e.adresse, ignoriert: e.quelle === 'ignoriert', quelle: e.quelle, koord: Number.isFinite(e.lat) ? { lat: e.lat, lon: e.lon } : null };
+      // von Hand eingetragene Adresse ohne Koordinaten: einmal suchen und merken
+      if (!r.koord && !r.ignoriert && e.adresse && !zeitUm() && e.koordGesucht !== heute) {
+        const g = await suchenMitVarianten(e.adresse);
+        const l = g.ort && g.ort.location;
+        e.koordGesucht = heute;
+        if (l) { e.lat = l.latitude; e.lon = l.longitude; r.koord = { lat: e.lat, lon: e.lon }; }
+      }
     } else if (hintergrund && o && o.versucht === heute) {
       r = { adresse: null, fehler: `${o.fehler || 'kein Treffer'}; heute schon gesucht` };
-    } else if (hintergrund && Date.now() - startZeit > 15000) {
+    } else if (zeitUm()) {
       r = { adresse: null, fehler: 'Suche verschoben (zu viele neue Orte auf einmal)' };
     } else {
       r = await suchenMitVarianten(text);
@@ -127,7 +133,6 @@ async function streckenPruefen(strecken, heute, log, sichereTexte) {
         d.offen[k] = { text, seit: (o && o.seit) || heute, fehler: r.fehler, versucht: heute };
       }
     }
-    r.sicher = sicherSet.has(k) || r.quelle === 'hand' || r.quelle === 'standort';
     ergebnis.set(k, r);
     return r;
   }
@@ -137,7 +142,7 @@ async function streckenPruefen(strecken, heute, log, sichereTexte) {
     const nach = await suchen(s.nach);
     if (von.adresse && nach.adresse) {
       gut.push({ ...s, von: sicherSet.has(O.norm(s.von)) ? s.von : von.adresse, nach: sicherSet.has(O.norm(s.nach)) ? s.nach : nach.adresse,
-        sicher: von.sicher && nach.sicher, vonKoord: von.koord, nachKoord: nach.koord });
+        vonKoord: von.koord, nachKoord: nach.koord });
     }
     else {
       const f = !von.adresse ? { text: s.von, r: von } : { text: s.nach, r: nach };

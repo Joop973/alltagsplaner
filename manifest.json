@@ -1,5 +1,5 @@
 {
-  "version": "3.5.1",
+  "version": "3.6.0",
   "dateien": [
     "planer/adapter/dateien.js",
     "planer/adapter/dienstplan.js",
@@ -10,6 +10,7 @@
     "planer/adapter/orte.js",
     "planer/adapter/pdf.js",
     "planer/adapter/planung.js",
+    "planer/adapter/routing.js",
     "planer/adapter/sonder.js",
     "planer/adapter/sprache.js",
     "planer/adapter/widget.js",

@@ -87,7 +87,10 @@ function tagesTeile(plan, datum) {
 // cfg: {an}, aufstehen: Aufsteh-Einstellungen, regeln: für tagStart / tagStartFrei
 function morgenUeberblick(plan, datum, jetzt, cfg, aufstehen, regeln) {
   if (!cfg || !cfg.an) return null;
-  const teile = tagesTeile(plan, datum);
+  // Randbemerkungen: Termine anderer (z. B. Einladungen ohne Zusage), nur zur Info
+  const infos = (plan.infos || []).filter(i => D.ymd(new Date(i.start)) === datum)
+    .map(i => `Info: ${D.hm(new Date(i.start))} ${i.titel}`);
+  const teile = tagesTeile(plan, datum).concat(infos);
   if (!teile.length) return null;
   const a = aufstehZeit(plan.fahrten, datum, aufstehen);
   const info = (plan.tagInfo || []).find(t => t.datum === datum);

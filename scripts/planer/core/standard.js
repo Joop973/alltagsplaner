@@ -64,6 +64,8 @@ function standardEinstellungen() {
       fallbackMin: 20,
       vorziehenTage: 2,
       cacheTage: 30,
+      pufferAuto: 3,           // Minuten zur berechneten Fahrzeit (Parken, Ampeln)
+      pufferRad: 1,
     },
     schichten: {
       referenzMontag: null,

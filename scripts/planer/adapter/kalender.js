@@ -39,7 +39,17 @@ async function termineLesen(einst, jetzt) {
   const ev = await CalendarEvent.between(von, bis, kalender);
   return ev
     .filter(e => !e.isAllDay)
-    .map(e => ({ titel: e.title, start: e.startDate, end: e.endDate, ort: e.location || '', kalender: e.calendar.title }));
+    .map(e => ({ titel: e.title, start: e.startDate, end: e.endDate, ort: e.location || '', kalender: e.calendar.title, info: nurInfo(e) }));
+}
+
+// Einladung von jemand anderem (z. B. Freundin als Organisatorin), der du nicht zugesagt hast:
+// nur Randbemerkung (blockiert nichts, keine Fahrt, kein Wecker). Zugesagt = normaler Termin.
+function nurInfo(e) {
+  const liste = Array.isArray(e.attendees) ? e.attendees : [];
+  const ich = liste.find(a => a && a.isCurrentUser);
+  if (!ich) return false;          // keine Einladung (eigener Termin)
+  if (ich.role === 'chair') return false; // du bist selbst Organisator
+  return ich.status !== 'accepted';
 }
 
 // Ganztägige Einträge (Urlaub, krank, verreist …) aller Kalender außer Planer/Geburtstage/Müll
