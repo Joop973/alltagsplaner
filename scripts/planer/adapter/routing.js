@@ -8,17 +8,11 @@ function hole(p) {
 }
 const F = hole('core/fahrzeiten');
 
-const G = typeof globalThis !== 'undefined' ? globalThis : this;
-function warten(ms) {
-  if (ms <= 0 || typeof Timer === 'undefined') return Promise.resolve();
-  return new Promise(r => Timer.schedule(ms, false, r));
-}
 function imVordergrund() { return typeof config !== 'undefined' && !!config.runsInApp; }
 
 async function route(modus, a, b, regeln) {
-  // höflich: höchstens eine Anfrage pro Sekunde
-  await warten(1000 - (Date.now() - (G.__planerLetzteRoute || 0)));
-  G.__planerLetzteRoute = Date.now();
+  // Anfragen laufen nacheinander (jede dauert ohnehin einen Moment); keine künstliche Pause,
+  // damit der Lauf im Hintergrund kurz bleibt. Neue Strecken gibt es selten (Cache 30 Tage).
   const r = new Request(F.routingUrl(modus, a, b));
   r.headers = { 'User-Agent': 'Alltagsplaner/3 (Scriptable; github.com/Joop973/alltagsplaner)' };
   r.timeoutInterval = 10;
@@ -38,7 +32,7 @@ async function berechnen(strecken, cache, heute, regeln, log) {
       continue;
     }
     let min = null, fehler = null;
-    if (!(hintergrund && Date.now() - start > 10000)) {
+    if (!(hintergrund && Date.now() - start > 6000)) {
       try { min = await route(s.modus, s.vonKoord, s.nachKoord, regeln); } catch (e) { fehler = String(e && e.message ? e.message : e); }
     } else fehler = 'später (zu viele neue Strecken auf einmal)';
     if (min != null) {

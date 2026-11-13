@@ -102,6 +102,7 @@ async function fahrzeitenAktualisieren(einst, cache, termine, jetzt) {
 // param "heim": Automation "Ankommen zuhause". opt.mitWecker: false = Test aus der App (Wecker bleiben).
 async function planen(param, opt) {
   const o = { mitWecker: true, ...(opt || {}) };
+  const t0 = Date.now();
   const { einst, aufgaben, cache } = await laden();
   pruefen(einst);
   const jetzt = new Date();
@@ -113,7 +114,9 @@ async function planen(param, opt) {
   const { termine } = await termineUndInfos(einst, jetzt, z, cache);
   await zustandSpeichern(z);
   await fahrzeitenAktualisieren(einst, cache, termine, jetzt);
+  const t1 = Date.now();
   const plan = await planenUndSchreiben(einst, aufgaben, cache, jetzt, { mitWecker: o.mitWecker });
+  await log(`--- fertig: ${plan.wecker.length} Wecker an den Kurzbefehl, Dauer ${Math.round((Date.now() - t0) / 1000)} s (Fahrzeiten ${Math.round((t1 - t0) / 1000)} s) ---`);
   // rad/auto leer: ältere Kurzbefehle mit "Wegzeit abrufen" laufen so ohne Abfragen durch
   return { wecker: plan.wecker, anzahl: plan.wecker.length, bloecke: plan.bloecke.length, rad: [], auto: [] };
 }

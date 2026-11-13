@@ -97,10 +97,10 @@ async function streckenPruefen(strecken, heute, log, sichereTexte) {
   const d = await laden();
   const ergebnis = new Map();
   // Im Hintergrund (Kurzbefehl, Automation) ist die Laufzeit knapp: nicht gefundene Orte
-  // höchstens einmal am Tag neu suchen und insgesamt höchstens 10 Sekunden suchen.
+  // höchstens einmal am Tag neu suchen und insgesamt höchstens 6 Sekunden suchen.
   const hintergrund = !imVordergrund();
   const startZeit = Date.now();
-  const zeitUm = () => hintergrund && Date.now() - startZeit > 10000;
+  const zeitUm = () => hintergrund && Date.now() - startZeit > 6000;
   async function suchen(text) {
     const k = O.norm(text);
     if (ergebnis.has(k)) return ergebnis.get(k);
