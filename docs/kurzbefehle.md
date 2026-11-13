@@ -105,7 +105,7 @@ Genauso, Uhrzeit 20:00.
 
 ## 4. Widget
 
-Das Widget ist dunkel und ruhig. Es zeigt oben, was **jetzt** dran ist (oder **als Nächstes** kommt), mit Symbol, einer Restzeit, die von selbst mitläuft, und einem Balken, der schrumpft. Darunter: der Tag als farbige Zeitleiste (ein weißer Strich = jetzt) und die nächsten Punkte.
+Das Widget ist dunkel und ruhig. Es zeigt oben, was **jetzt** dran ist (oder **als Nächstes** kommt), mit Symbol, festen Uhrzeiten ("bis 16:00 · dann 16:00 Rad nach Hause") und einem Balken, der schrumpft. Darunter: der Tag als farbige Zeitleiste (ein weißer Strich = jetzt) und die nächsten Punkte.
 
 Farben: Grün = Aufgabe, Hellblau = Termin, Blau = Arbeit, Orange = Fahrt, Lila = Ruhe vor der Abfahrt, Grau = Pause.
 
@@ -120,7 +120,7 @@ Farben: Grün = Aufgabe, Hellblau = Termin, Blau = Arbeit, Orange = Fahrt, Lila 
 3. Jedes Widget antippen → Script **Planer Widget**.
 4. Optional über der Uhr (eine Zeile): dort Scriptable wählen → Script **Planer Widget**.
 
-Hinweis: iOS zeichnet Widgets nur alle paar Minuten neu. Die Restzeit-Zahl läuft trotzdem sekundengenau mit, der Balken springt in Schritten.
+Hinweis: iOS entscheidet selbst, wann ein Widget neu gezeichnet wird – auf dem Sperrbildschirm manchmal erst nach Stunden. Darum stehen dort feste Uhrzeiten; bei "noch …" steht dahinter, von wann die Angabe ist ("Stand 15:20"). Antippen öffnet den Planer und zeichnet neu.
 
 ---
 

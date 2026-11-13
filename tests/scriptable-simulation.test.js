@@ -693,11 +693,15 @@ test('Stufe 2: Regen, Aufstehwecker, Tagesabschluss, Morgen-Überblick, Widget, 
     if (familie === 'medium') {
       // 09:00: als Nächstes der Block 18:15? Erst kommt die Ruhe vor dem Training (Abfahrt), davor Bad putzen
       assert.match(alles, /Bad putzen/, alles);
-      assert.match(alles, /\[Uhr /, 'Restzeit läuft live');
+      assert.ok(!/\[Uhr /.test(alles), 'keine mitlaufende Uhr (zählt sonst hoch, wenn iOS nicht neu zeichnet)');
+      assert.match(alles, /(bis|um) \d\d:\d\d/, alles);
       assert.ok(prot.bilder >= 3, 'Balken, Zeitleiste, Symbole');
       assert.ok(prot.symbole.includes('shower.fill'), prot.symbole.join(','));
     }
     if (familie === 'accessoryInline') assert.strictEqual(prot.texte.length, 1, alles);
+    if (familie === 'accessoryRectangular') assert.match(alles, /bis \d\d:\d\d|noch .* \(Stand 09:00\)/, alles);
+    if (familie === 'accessoryCircular') assert.match(alles, /^\d\d:\d\d$/m, alles);
+    assert.ok(!/\[Uhr /.test(alles), familie);
   }
   u.ctx.config = { runsInApp: false };
 

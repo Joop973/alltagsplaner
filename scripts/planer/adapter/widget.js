@@ -31,40 +31,31 @@ function text(stack, t, groesse, hex, fett) {
   return x;
 }
 
-// Live laufende Restzeit (iOS zählt selbst weiter)
-function restzeit(stack, bis, groesse, hex) {
-  const d = stack.addDate(bis);
-  d.applyTimerStyle();
-  d.font = Font.systemFont(groesse);
-  if (hex) d.textColor = farbe(hex);
-  d.lineLimit = 1;
-  return d;
-}
-
 async function daten() {
   const plan = await DAT.lesen('plan.json', null);
   const ged = await DAT.lesen('gedaechtnis.json', null);
   return { plan, ged };
 }
 
-// Kopf: Symbol, Titel, "bis 16:55 · noch 0:20:13" und Balken
+// Kopf: Symbol, Titel, feste Uhrzeiten ("bis 16:00 · dann 16:00 Rad nach Hause") und Balken.
+// Keine mitlaufende Uhr: iOS zeichnet Widgets (vor allem auf dem Sperrbildschirm) oft stundenlang
+// nicht neu, dann zählt die Uhr nach Ablauf hoch ("23:50:48"). Feste Uhrzeiten bleiben verständlich.
 function kopf(w, j, jetzt, opt) {
   const e = j.aktuell || j.naechstes;
   const z = w.addStack();
   z.centerAlignContent();
-  symbol(z, AN.symbolFuer(e), opt.gross ? 20 : 16, opt.mono ? null : AN.farbeFuer(e.art));
-  z.addSpacer(8);
-  // Sperrbildschirm ist schmal: Uhrzeit in den Titel, darunter nur "noch …" (sonst wird gekürzt)
-  const titel = opt.mono ? (j.aktuell ? e.titel : `${D.hm(e.start)} ${e.titel}`) : j.aktuell ? e.titel : `Als Nächstes: ${e.titel}`;
+  symbol(z, AN.symbolFuer(e), opt.gross ? 20 : opt.mono ? 13 : 16, opt.mono ? null : AN.farbeFuer(e.art));
+  z.addSpacer(opt.mono ? 5 : 8);
+  const tag = d => (D.ymd(d) === D.ymd(jetzt) ? '' : `${D.kurz(d).slice(0, 2)} `);
+  const titel = j.aktuell ? e.titel : opt.mono ? `${tag(e.start)}${D.hm(e.start)} ${e.titel}` : `Als Nächstes: ${e.titel}`;
   text(z, titel, opt.gross ? 17 : opt.mono ? 13 : 14, opt.mono ? null : F.text, true);
   w.addSpacer(opt.mono ? 1 : 3);
-  const u = w.addStack();
-  u.centerAlignContent();
-  const wann = opt.mono ? (j.aktuell ? 'noch ' : 'in ')
-    : j.aktuell ? `bis ${D.hm(e.end)} · noch ` : `${D.ymd(e.start) === D.ymd(jetzt) ? 'um' : D.kurz(e.start).slice(0, 2)} ${D.hm(e.start)} · in `;
-  text(u, wann, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
-  restzeit(u, j.bis, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
-  w.addSpacer(5);
+  const n = j.aktuell ? j.naechstes : null;
+  let zeile;
+  if (j.aktuell) zeile = `bis ${D.hm(e.end)}${n ? ` · dann ${tag(n.start)}${D.hm(n.start)} ${n.titel}` : ''}`;
+  else zeile = opt.mono ? `noch ${AN.dauerText((e.start - jetzt) / 60000)} (Stand ${D.hm(jetzt)})` : `${tag(e.start) || 'um '}${D.hm(e.start)}`;
+  text(w, zeile, opt.gross ? 13 : 12, opt.mono ? null : F.leise);
+  w.addSpacer(opt.mono ? 3 : 5);
   w.addImage(ZE.balken(j.anteil, { breite: opt.breite, hoehe: opt.mono ? 5 : 6, mono: opt.mono, farbe: AN.farbeFuer(e.art) })).imageSize = new Size(opt.breite, opt.mono ? 5 : 6);
 }
 
@@ -107,9 +98,9 @@ async function erstellen(familie) {
     z.addSpacer();
     if (e) {
       const t = k.addStack();
-      t.addSpacer(8);
-      restzeit(t, j.bis, 10, null).centerAlignText();
-      t.addSpacer(8);
+      t.addSpacer();
+      text(t, D.hm(j.aktuell ? e.end : e.start), 11, null, true).centerAlignText();
+      t.addSpacer();
     }
     k.addSpacer();
   } else if (familie === 'accessoryRectangular') {
@@ -163,9 +154,9 @@ async function erstellen(familie) {
       text(fuss, AN.ohnePlatzText(plan.warnText), 11, F.hinweis);
     }
   }
-  // neu zeichnen, wenn sich etwas ändert, sonst alle 10 min (Balken)
+  // neu zeichnen, wenn sich etwas ändert, sonst alle 15 min (Balken); iOS entscheidet selbst, wann genau
   const wechsel = j.bis && j.bis > jetzt ? j.bis : null;
-  const bald = D.plusMin(jetzt, 10);
+  const bald = D.plusMin(jetzt, 15);
   w.refreshAfterDate = wechsel && wechsel < bald ? wechsel : bald;
   return w;
 }
